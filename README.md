@@ -31,12 +31,18 @@ Do **NOT** rename these primary numbered directories. The Python Smart Engine an
        ```
 
    - Once activated, run the setup script to build the Buttercut folder structure:
-     ```
-     python setup.py
-     ```
+     - **macOS/Linux:**
+       ```
+       python3 setup.py
+       ```
+     - **Windows:**
+       ```
+       python setup.py
+       ```
+
 
 2. **Run the Smart Engine**
-   - **macOS:** Double-click `Run_Claude.command` or run `python lp5000_v9_33.py` in this folder.
+   - **macOS:** Double-click `Run_Claude.command` or run `python3 lp5000_v9_33.py` in this folder.
    - **Windows:** Double-click `Run_Claude.bat` or run `python lp5000_v9_33.py` in this folder.
 
 3. **Requirements:** Python 3 with `Pillow` installed (`pip install -r requirements.txt`, satisfied in step 1).

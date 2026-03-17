@@ -26,3 +26,6 @@ __pycache__/
 *.drp
 *.prproj
 *.aep
+
+# Ignore generated auto_run files
+auto_run.*
