@@ -7,6 +7,56 @@ import re
 import json
 
 
+def _parse_frontmatter(text: str) -> dict:
+    """Parse YAML-like frontmatter. Returns dict with Stage 1-4 (lists) and triggers (list)."""
+    result = {}
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r'^(Stage [1-4]|triggers):\s*$', line)
+        if m:
+            key = m.group(1)
+            items = []
+            i += 1
+            while i < len(lines) and re.match(r'^\s+-\s+', lines[i]):
+                raw = lines[i].strip()
+                if raw.startswith('- '):
+                    item = raw[2:].strip()
+                    if item.startswith('"') and item.endswith('"'):
+                        item = item[1:-1]
+                    items.append(item)
+                i += 1
+            result[key] = items
+            continue
+        i += 1
+    return result
+
+
+def _read_frontmatter_block(path: str) -> tuple[str, str] | None:
+    """Read file; return (frontmatter_yaml_text, body_after_second_delimiter) or None."""
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    if not content.strip().startswith('---'):
+        return None
+    # First line is "---"; find the next "---" (closing delimiter)
+    lines = content.splitlines()
+    if lines[0].strip() != '---':
+        return None
+    end_idx = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == '---':
+            end_idx = i
+            break
+    if end_idx is None:
+        return None
+    yaml_text = '\n'.join(lines[1:end_idx])
+    body = '\n'.join(lines[end_idx + 1:])
+    return yaml_text, body
+
+
 def verify_claude_settings(project_path: str) -> None:
     settings_dir = os.path.join(project_path, ".claude")
     os.makedirs(settings_dir, exist_ok=True)
@@ -74,59 +124,77 @@ def get_template_tags(workflows_path: str, template_name: str) -> set | None:
         return set(re.findall(r'\{\{(.*?)\}\}', f.read()))
 
 
-def get_tasks_for_template(
+DEFAULT_TRIGGERS = [
+    "Multicam - Sync & stack all A-Roll angles + Master Audio",
+    "Use B-Roll Footage",
+]
+
+
+def get_template_frontmatter(workflows_path: str, template_name: str) -> dict:
+    """Read workflow file and return parsed frontmatter (Stage 1-4, triggers). For Build from scratch uses General_Workflow.md."""
+    if template_name == "🛠️ Build from scratch":
+        template_name = "General_Workflow.md"
+    path = os.path.join(workflows_path, template_name)
+    block = _read_frontmatter_block(path)
+    if block is None:
+        if template_name != "General_Workflow.md":
+            return get_template_frontmatter(workflows_path, "General_Workflow.md")
+        return {}
+    yaml_text, _ = block
+    fm = _parse_frontmatter(yaml_text)
+    if not fm.get("Stage 1") and template_name != "General_Workflow.md":
+        return get_template_frontmatter(workflows_path, "General_Workflow.md")
+    return fm
+
+
+def get_stages_from_template(
+    workflows_path: str,
     template_name: str,
     m_sync_active: bool,
-    broll_active: bool
+    broll_active: bool,
 ) -> dict[str, list[str]]:
-    """Return dict: stage name -> list of task option strings."""
+    """Return dict: stage name -> list of task option strings. All from frontmatter; optionally append conditional tasks."""
+    fm = get_template_frontmatter(workflows_path, template_name)
+    tasks = {
+        "Stage 1": list(fm.get("Stage 1", [])),
+        "Stage 2": list(fm.get("Stage 2", [])),
+        "Stage 3": list(fm.get("Stage 3", [])),
+        "Stage 4": list(fm.get("Stage 4", [])),
+    }
     m_sync = "Multicam - Sync & stack all A-Roll angles + Master Audio"
     broll_use = "Use B-Roll Footage"
-    tasks = {
-        "Stage 1": ["Use A-Roll Footage", broll_use, m_sync],
-        "Stage 2": [
-            "Transcribe Master Audio ONLY (Ignore Vision/Other Cams)",
-            "Give me a transcript summary",
-            "Analyze B-Roll Vision (Low-Token Mode / Fast)",
-            "Analyze B-Roll Vision (Normal-Token Mode / Detailed)",
-            "Analyze B-Roll Vision (High-Token Mode / Max Detail)"
-        ],
-        "Stage 3": ["Franken-bite & Remove Dead Space", "Build Narrative Paper Edit"],
-        "Stage 4": [
-            "Export Final XML to ./03_Edit/XML_Exports",
-            "Export Final Transcripts as .txt to ./03_Edit/Transcripts"
-        ]
-    }
-    if "Sermon" in template_name:
-        tasks["Stage 3"] = tasks["Stage 3"] + [
-            "Find 30-60s Social Clips (Pause for User Review)",
-            "Find 60-120s Social Clips (Pause for User Review)"
-        ]
-    elif "Wedding" in template_name:
-        tasks["Stage 3"] = tasks["Stage 3"] + [
-            "Apply Rhythmic B-Roll Overlay (Wedding Style)",
-            "Perform Emotional Story Sweep"
-        ]
-    elif "Doc" in template_name:
-        tasks["Stage 3"] = tasks["Stage 3"] + [
-            "Alternate Multicam Angles to Hide Cuts",
-            "Identify Core Narrative Soundbites"
-        ]
-    elif "BRoll" in template_name:
-        tasks["Stage 1"] = [broll_use]
-        tasks["Stage 3"] = [
-            "Categorize B-Roll Based on Guidelines (Token-Heavy / Detailed Sort)",
-            "Build Separate XML Sequences per Category",
-            "Build Single Master Selects Stringout XML"
-        ]
-    if m_sync_active:
+    if m_sync_active and m_sync not in tasks["Stage 3"]:
         tasks["Stage 3"].append("Auto-cut to B-Cam for intimate/emotional moments (Transcript-based)")
-    if broll_active and "BRoll" not in template_name:
-        tasks["Stage 3"].extend([
+    # Only add B-Roll overlay tasks when template is not BRoll-only (BRoll has single Stage 1 option)
+    is_broll_only = len(tasks["Stage 1"]) == 1 and tasks["Stage 1"] and tasks["Stage 1"][0] == broll_use
+    if broll_active and not is_broll_only:
+        extra = [
             "Insert appropriate B-Roll on V2 based on context of transcript.",
-            "Create separate sequence of all usable B-Roll."
-        ])
+            "Create separate sequence of all usable B-Roll.",
+        ]
+        for e in extra:
+            if e not in tasks["Stage 3"]:
+                tasks["Stage 3"].append(e)
     return tasks
+
+
+def get_triggers_from_template(workflows_path: str, template_name: str) -> list[str]:
+    """Return list of task labels that trigger UI refresh when toggled."""
+    fm = get_template_frontmatter(workflows_path, template_name)
+    return list(fm.get("triggers", DEFAULT_TRIGGERS))
+
+
+def _strip_frontmatter_from_content(content: str) -> str:
+    """Return content without the leading --- ... --- block."""
+    if not content.strip().startswith('---'):
+        return content
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != '---':
+        return content
+    for i in range(1, len(lines)):
+        if lines[i].strip() == '---':
+            return '\n'.join(lines[i + 1:])
+    return content
 
 
 def build_claude_md(
@@ -146,6 +214,7 @@ def build_claude_md(
         path = os.path.join(workflows_path, template_name)
         with open(path, 'r', encoding='utf-8') as f:
             md = f.read()
+        md = _strip_frontmatter_from_content(md)
         for tag, value in dynamic_vars.items():
             md = md.replace(f"{{{{{tag}}}}}", value)
     md += f"\n\n## 🌍 PROJECT CONFIG\n- Vibe: {vibe}\n- Pacing: {pacing}\n- Master Audio Source: {master_audio}"

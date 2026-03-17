@@ -75,7 +75,7 @@ Pre-built workflow templates live in `assets/Workflows/`:
 - **Doc_Workflow.md** — Interview narrative & paper edit
 - **BRoll_Selects_Workflow.md** — B-roll selects
 
-Select one in the LP 5000 GUI to prefill creative guidelines and folder roles; you can still customize per project.
+Select one in the LP 5000 GUI to prefill creative guidelines and folder roles; you can still customize per project. To add your own workflow, see **[How to Create a Workflow File](assets/Workflows/README.md)**.
 
 ---
 
