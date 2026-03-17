@@ -4,9 +4,7 @@ import shutil
 def build_buttercut_environment():
     # --- THE PATHFINDER UPGRADE ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # V9.33 UPDATE: Versioned output folder!
-    base_dir = os.path.join(script_dir, "Buttercut_Master_Template_v9_33")
-    
+
     # 1. Build the Full Folder Tree
     folders = [
         "01_Footage/A-Roll/Cam_A",
@@ -25,11 +23,11 @@ def build_buttercut_environment():
         "06_Preview/FrameIO_Exports",
         "07_Master/High_Res_ProRes"
     ]
-    for folder in folders: os.makedirs(os.path.join(base_dir, folder), exist_ok=True)
+    for folder in folders: os.makedirs(os.path.join(script_dir, folder), exist_ok=True)
 
     # 2. Automated Logo Sync
     source_logo = os.path.join(script_dir, "claude assets", "LP AI VIDEO EDITOR logo.png")
-    dest_logo = os.path.join(base_dir, "assets", "LP AI VIDEO EDITOR logo.png")
+    dest_logo = os.path.join(script_dir, "assets", "LP AI VIDEO EDITOR logo.png")
     
     if os.path.exists(source_logo):
         try:
