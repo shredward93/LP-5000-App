@@ -15,12 +15,12 @@ The project is currently transitioning out of the monolithic prototyping phase. 
 **Target Architecture & File Structure**
 We are shattering the legacy `build_lp5000_v9_33.py` script into the following active directory structure:
 
-* **`LP_5000_Project/`** (Root Directory)
+* **`LP-5000-App/`** (Root Directory)
     * **`main.py`**: The application launcher. It imports the interface and engine, connects them, and initializes the Tkinter main loop.
     * **`gui.py`**: The frontend visual layer. Contains all `tkinter` and `ttk` layout logic, including the tabbed workspace, progress bars, and the console display.
     * **`engine.py`**: The backend orchestration layer. Handles the `subprocess` logic for the Claude Code CLI, thread management, and the message queue.
     * **`assets/`**: Contains visual assets, currently holding `LP AI VIDEO EDITOR logo.png`.
-    * **`build_lp5000_v9_33.py`**: The legacy monolithic script, kept strictly as a code reference.
+    * **`setup.py`**: Folder setup script for project localization
 
 **Core Logic & Data Flow**
 * **Asynchronous UI:** To prevent the Tkinter GUI from freezing during heavy editing calculations, `engine.py` uses `subprocess.Popen` to run the Claude Code CLI invisibly in the background. 
