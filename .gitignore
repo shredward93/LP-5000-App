@@ -1,3 +1,28 @@
 __pycache__/
 *.pyc
 .DS_Store
+.venv
+
+# Users local .claude settings
+.claude
+
+# Ignore heavy media folders
+01_Footage
+02_Audio
+03_Edit
+04_Graphics
+05_VFX
+06_Preview
+07_Master
+
+# Ignore specific large file types
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.mxf
+*.braw
+*.r3d
+*.drp
+*.prproj
+*.aep
