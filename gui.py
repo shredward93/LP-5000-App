@@ -251,7 +251,7 @@ class LP5000SmartEngine:
             self.pacing_var.get(),
             self.master_audio_var.get(),
         )
-        claude_md_path = os.path.join(self.project_path, "CLAUDE.md")
+        claude_md_path = os.path.join(self.project_path, ".claude/CLAUDE.md")
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(md)
         active = [t for t, v in self.task_vars.items() if v.get()]

@@ -226,7 +226,7 @@ def build_claude_md(
 
 def build_run_prompt(active_tasks: list[str], global_sauce: str) -> str:
     """Build the prompt to paste into Claude (tasks + optional note)."""
-    prompt = f"Read CLAUDE.md. Execute: {', '.join(active_tasks)}."
+    prompt = f"Read .claude/CLAUDE.md. Execute: {', '.join(active_tasks)}."
     sauce = (global_sauce or "").replace('"', "'")
     if sauce.strip():
         prompt += f" Note: {sauce.strip()}."
