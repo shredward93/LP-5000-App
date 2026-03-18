@@ -5,7 +5,7 @@ __pycache__/
 
 # Users local .claude settings
 .claude
-CLAUDE.md
+CLAUDE.*
 
 # Ignore heavy media folders
 01_Footage
