@@ -11,12 +11,12 @@ Transform a powerful but intimidating command-line AI workflow (`barefootford/bu
 - [x] **Version Control:** Locked in the v9.33 monolithic script baseline and successfully backed it up to GitHub.
 - [x] **Deployment Strategy:** Outlined the "Smart Setup" sequence to dynamically fetch correct binaries based on user hardware (Mac Apple Silicon vs. Windows PC).
 
-## 🔄 Phase 2: Modular Restructuring (In Progress)
-- [ ] **MVC Architecture:** Shatter the 600+ line monolithic `build` script into manageable, distinct files.
-    - [ ] `main.py` (The Launcher)
-    - [ ] `gui.py` (The Visual Frontend)
-    - [ ] `engine.py` (The Backend Logic)
-- [ ] **Asset Management:** Establish the `/assets` directory for branding (e.g., application logos).
+## 🔄 Phase 2: Modular Restructuring (Completed)
+- [x] **MVC Architecture:** Shatter the 600+ line monolithic `build` script into manageable, distinct files.
+    - [x] `main.py` (The Launcher)
+    - [x] `gui.py` (The Visual Frontend)
+    - [x] `engine.py` (The Backend Logic)
+- [x] **Asset Management:** Establish the `/assets` directory for branding (e.g., application logos).
 
 ## ⚙️ Phase 3: The Core Engine Upgrade (Next)
 - [ ] **Asynchronous Subprocessing:** Implement `subprocess.Popen` in `engine.py` to run the Claude Code CLI invisibly in the background.
