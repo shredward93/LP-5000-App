@@ -1,3 +1,23 @@
+---
+Stage 1:
+  - "Use B-Roll Footage"
+Stage 2:
+  - "Transcribe Master Audio ONLY (Ignore Vision/Other Cams)"
+  - "Give me a transcript summary"
+  - "Analyze B-Roll Vision (Low-Token Mode / Fast)"
+  - "Analyze B-Roll Vision (Normal-Token Mode / Detailed)"
+  - "Analyze B-Roll Vision (High-Token Mode / Max Detail)"
+Stage 3:
+  - "Categorize B-Roll Based on Guidelines (Token-Heavy / Detailed Sort)"
+  - "Build Separate XML Sequences per Category"
+  - "Build Single Master Selects Stringout XML"
+Stage 4:
+  - "Export Final XML to ./03_Edit/XML_Exports"
+  - "Export Final Transcripts as .txt to ./03_Edit/Transcripts"
+triggers:
+  - "Use B-Roll Footage"
+---
+
 # 🎬 PROJECT: {{Client or Project Name}} B-Roll Selects
 **Status:** Active
 **Workflow Type:** B-Roll Sifting & Categorization

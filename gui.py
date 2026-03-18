@@ -18,7 +18,8 @@ from engine import (
     scan_media_files,
     get_workflow_options,
     get_template_tags,
-    get_tasks_for_template,
+    get_stages_from_template,
+    get_triggers_from_template,
     build_claude_md,
     build_run_prompt,
     get_wrap_up_prompt,
@@ -186,12 +187,13 @@ class LP5000SmartEngine:
         broll_use = "Use B-Roll Footage"
         m_active = current_states.get(m_sync, False)
         b_active = current_states.get(broll_use, False)
-        tasks = get_tasks_for_template(selected, m_active, b_active)
+        tasks = get_stages_from_template(self.workflows_path, selected, m_active, b_active)
+        triggers = get_triggers_from_template(self.workflows_path, selected)
 
-        self.rebuild_stage(self.s1_bottom, tasks["Stage 1"], current_states, [m_sync, broll_use])
-        self.rebuild_stage(self.stage2_frame, tasks["Stage 2"], current_states, [])
-        self.rebuild_stage(self.stage3_frame, tasks["Stage 3"], current_states, [])
-        self.rebuild_stage(self.stage4_frame, tasks["Stage 4"], current_states, [])
+        self.rebuild_stage(self.s1_bottom, tasks["Stage 1"], current_states, triggers)
+        self.rebuild_stage(self.stage2_frame, tasks["Stage 2"], current_states, triggers)
+        self.rebuild_stage(self.stage3_frame, tasks["Stage 3"], current_states, triggers)
+        self.rebuild_stage(self.stage4_frame, tasks["Stage 4"], current_states, triggers)
 
     def rebuild_stage(self, frame, options, current_states, triggers):
         for w in frame.winfo_children():
