@@ -38,7 +38,7 @@ class LP5000SmartEngine:
         verify_claude_settings(self.project_path)
 
         self.scroll_canvas = tk.Canvas(self.root, bg="#0f0f0f", highlightthickness=0)
-        self.scrollbar = tk.Scrollbar(self.root, orient="vertical", command=self.scroll_canvas.yview)
+        self.scrollbar = tk.Scrollbar(self.root, orient="vertical", command=self.scroll_canvas.yview, width=30)
         self.main_frame = tk.Frame(self.scroll_canvas, bg="#0f0f0f")
         self.scroll_canvas.create_window((0, 0), window=self.main_frame, anchor="nw", width=730)
         self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
@@ -49,7 +49,16 @@ class LP5000SmartEngine:
             else:
                 self.scroll_canvas.yview_scroll(int(-1 * event.delta), "units")
 
+        def _on_arrow_up(_event):
+            self.scroll_canvas.yview_scroll(-1, "units")
+
+        def _on_arrow_down(_event):
+            self.scroll_canvas.yview_scroll(1, "units")
+
+
         self.scroll_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self.scroll_canvas.bind_all("<Up>", _on_arrow_up)
+        self.scroll_canvas.bind_all("<Down>", _on_arrow_down)
         self.scroll_canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
         self.main_frame.bind("<Configure>", lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all")))
