@@ -7,7 +7,7 @@ Transform a powerful but intimidating command-line AI workflow (`barefootford/bu
 
 ## ✅ Phase 1: Foundation & Prototyping (Completed)
 - [x] **Proof of Concept:** Validated the core AI-to-video-generation logic using Claude and Buttercut.
-- [x] **Local Optimization Strategy:** Defined the architecture to keep heavy lifting local (FFmpeg for metadata/stills, WhisperX for transcription) to save LLM tokens and API costs.
+- [x] **Local Optimization Strategy:** Defined the architecture to keep heavy lifting local (FFmpeg for metadata/stills, WhisperMLX for transcription) to save LLM tokens and API costs.
 - [x] **Version Control:** Locked in the v9.33 monolithic script baseline and successfully backed it up to GitHub.
 - [x] **Deployment Strategy:** Outlined the "Smart Setup" sequence to dynamically fetch correct binaries based on user hardware (Mac Apple Silicon vs. Windows PC).
 
@@ -37,7 +37,7 @@ Transform a powerful but intimidating command-line AI workflow (`barefootford/bu
 
 ## 📦 Phase 6: Deployment & Packaging
 - [ ] **Hardware Scanner Script:** Python script to detect OS, GPU architecture, and VRAM on first launch.
-- [ ] **Isolated Environment:** Automated creation of a local Python `venv` strictly for WhisperX's 3.10/3.11 dependencies.
+- [ ] **Isolated Environment:** Automated `uv tool install whispermlx` so WhisperMLX (Apple Silicon / MLX) is available without a manual Python venv.
 - [ ] **Executable Compilation:** Package the final Python app into standalone executables (`.exe` for Windows, `.dmg` for macOS) using PyInstaller.
 
 ---

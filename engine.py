@@ -62,6 +62,7 @@ def verify_claude_settings(project_path: str) -> None:
     os.makedirs(settings_dir, exist_ok=True)
     settings_path = os.path.join(settings_dir, "settings.json")
     recommended = {
+        "model": "claude-sonnet-5",
         "permissions": {
             "defaultMode": "acceptEdits",
             "allow": [
