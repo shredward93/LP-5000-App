@@ -3,6 +3,10 @@ __pycache__/
 .DS_Store
 .venv
 
+# Node / Electron
+node_modules/
+dist/
+
 # Users local .claude settings
 .claude
 CLAUDE.*

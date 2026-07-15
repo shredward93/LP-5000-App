@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
+<title>LP 5000 Smart Engine</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-scene" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <header class="app-header">
+    <h1>LP 5000 AI ASSISTANT VIDEO EDITOR</h1>
+    <div id="attachedTo" class="attached-to">No project open</div>
+    <button id="settingsBtn" class="ghost-btn" title="Settings">⚙️ Settings</button>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <button id="openProjectBtn" class="primary-btn">📂 Open Project Folder…</button>
+      <h2>Recent Projects</h2>
+      <ul id="recentProjects" class="recent-list"></ul>
+    </aside>
+
+    <section id="workspace" class="workspace hidden">
+      <div class="workspace-grid">
+      <fieldset class="panel">
+        <legend>1️⃣ Source Blueprint &amp; Preferences</legend>
+        <label>Workflow Template
+          <select id="templateSelect"></select>
+        </label>
+        <div class="row">
+          <label>Vibe
+            <select id="vibeSelect">
+              <option>Cinematic &amp; Emotional</option>
+              <option>Punchy &amp; Energetic</option>
+              <option>Clean Corporate</option>
+              <option>Raw / Unedited</option>
+            </select>
+          </label>
+          <label>Pacing
+            <select id="pacingSelect">
+              <option>Slow/Breathe</option>
+              <option>Moderate</option>
+              <option>Fast/Punchy</option>
+              <option>No Cuts</option>
+            </select>
+          </label>
+        </div>
+        <div id="dynamicFields" class="dynamic-fields"></div>
+      </fieldset>
+
+      <fieldset class="panel">
+        <legend>🎙️ Stage 1: Ingest (Sources &amp; Sync)</legend>
+        <label>Master Audio Source
+          <select id="masterAudioSelect"></select>
+        </label>
+        <ul id="stage1Tasks" class="task-list"></ul>
+      </fieldset>
+
+      <fieldset class="panel panel-wide">
+        <legend>📥 Import Footage</legend>
+        <p class="hint">Add as many camera angles as this shoot actually has — type any camera name (e.g. "A", "Wide", "GoPro Chest"), it doesn't have to be a letter. Loose footage/audio already sitting in this project folder is auto-detected and listed below too — assigning and linking those moves them into place (files browsed in from elsewhere stay symlinked, never moved).</p>
+        <div class="row">
+          <button id="addFootageBtn" class="ghost-btn">➕ Add Files…</button>
+        </div>
+        <ul id="footageStaging" class="file-list"></ul>
+        <div id="footageStagingActions" class="row hidden">
+          <label>Set all to
+            <select id="bulkCategorySelect"></select>
+          </label>
+          <input id="bulkCameraLabelInput" type="text" list="cameraLabelsList" placeholder="Camera name" />
+          <button id="applyBulkRoleBtn" class="ghost-btn">Apply to all</button>
+          <button id="linkFootageBtn" class="primary-btn">Link into Project</button>
+        </div>
+        <datalist id="cameraLabelsList"></datalist>
+        <div class="row">
+          <strong>Already Linked</strong>
+          <button id="toggleFilesBtn" class="ghost-btn">☑️ Toggle All / None</button>
+        </div>
+        <p class="hint">Check which of these Claude should actually use this run — everything is checked by default.</p>
+        <ul id="linkedFootageList" class="file-list"></ul>
+      </fieldset>
+
+      <fieldset class="panel">
+        <legend>👁️ Stage 2: Analyze (Vision &amp; Audio)</legend>
+        <ul id="stage2Tasks" class="task-list"></ul>
+      </fieldset>
+
+      <fieldset class="panel">
+        <legend>✂️ Stage 3: Edit &amp; Assemble</legend>
+        <ul id="stage3Tasks" class="task-list"></ul>
+      </fieldset>
+
+      <fieldset class="panel panel-wide">
+        <legend>🚀 Stage 4: Export &amp; Delivery</legend>
+        <ul id="stage4Tasks" class="task-list"></ul>
+      </fieldset>
+      </div>
+
+      <div class="workspace-footer">
+        <label class="sauce-label">🍯 Global Secret Sauce / Project Notes
+          <input id="globalSauce" type="text" placeholder="Anything Claude should know for this run…" />
+        </label>
+
+        <div class="actions">
+          <button id="compileBtn" class="compile-btn">🚀 COMPILE &amp; EXECUTE</button>
+          <button id="wrapUpBtn" class="wrap-btn">🧹 WRAP-UP &amp; BACKUP PROJECT</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="emptyState" class="empty-state">
+      <p>Open a project folder to get started, or pick one from Recent Projects.</p>
+    </section>
+  </main>
+
+  <div id="settingsPanel" class="settings-panel hidden">
+    <div class="settings-panel-inner">
+      <div class="row">
+        <h2>Settings</h2>
+        <button id="closeSettingsBtn" class="ghost-btn">✕</button>
+      </div>
+      <h3>Claude</h3>
+      <div class="row">
+        <label for="claudeModelSelect">Model</label>
+        <select id="claudeModelSelect"></select>
+      </div>
+      <div class="row">
+        <label for="claudeEffortSelect">Effort</label>
+        <select id="claudeEffortSelect"></select>
+      </div>
+      <h3>Tools</h3>
+      <div id="toolRows"></div>
+      <h3>ButterCut</h3>
+      <div id="buttercutRow" class="tool-row"></div>
+      <h3>Workflows</h3>
+      <div class="row">
+        <button id="openWorkflowsFolderBtn" class="ghost-btn">Open Workflows Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

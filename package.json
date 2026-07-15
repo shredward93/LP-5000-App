@@ -1,0 +1,41 @@
+{
+  "name": "lp5000",
+  "productName": "LP 5000 Smart Engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop assistant that drives Claude Code + Buttercut for AI-assisted video editing.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "^43.1.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "org.lifept.lp5000",
+    "productName": "LP 5000 Smart Engine",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "icon": "assets/icons/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "win": {
+      "icon": "assets/icons/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    }
+  }
+}

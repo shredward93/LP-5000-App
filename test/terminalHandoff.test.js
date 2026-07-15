@@ -1,0 +1,143 @@
+// @ts-check
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync, spawn } = require('node:child_process');
+const { posixQuote, powershellQuote, killAllLaunchedProcesses } = require('../src/main/terminalHandoff');
+
+function makeTmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lp5000-th-test-'));
+}
+
+test('posixQuote neutralizes command substitution embedded in a project path', () => {
+  const tmp = makeTmpDir();
+  try {
+    const markerFile = path.join(tmp, 'PWNED');
+    const maliciousPath = `/tmp/Wedding $(touch ${markerFile})`;
+    const scriptPath = path.join(tmp, 'test.sh');
+    fs.writeFileSync(scriptPath, [
+      '#!/bin/bash',
+      `export BUTTERCUT_PROJECT_DIR=${posixQuote(maliciousPath)}`,
+    ].join('\n'));
+    execFileSync('bash', [scriptPath]);
+    assert.equal(fs.existsSync(markerFile), false, 'the injected command must not have executed');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('posixQuote round-trips a path containing a literal single quote', () => {
+  const tmp = makeTmpDir();
+  try {
+    const trickyPath = path.join(tmp, "O'Brien Wedding");
+    fs.mkdirSync(trickyPath);
+    const scriptPath = path.join(tmp, 'test.sh');
+    const outFile = path.join(tmp, 'out.txt');
+    fs.writeFileSync(scriptPath, [
+      '#!/bin/bash',
+      `printf '%s' ${posixQuote(trickyPath)} > ${posixQuote(outFile)}`,
+    ].join('\n'));
+    execFileSync('bash', [scriptPath]);
+    assert.equal(fs.readFileSync(outFile, 'utf-8'), trickyPath);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('powershellQuote escapes an embedded single quote by doubling it', () => {
+  assert.equal(powershellQuote("O'Brien"), "'O''Brien'");
+});
+
+test('powershellQuote wraps a value containing a $(...) subexpression as an inert literal', () => {
+  const quoted = powershellQuote('Sermon $(evil-command)');
+  assert.equal(quoted, "'Sermon $(evil-command)'");
+});
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test('killAllLaunchedProcesses terminates the tracked process and removes the track file', async () => {
+  const tmp = makeTmpDir();
+  try {
+    const trackFile = path.join(tmp, 'track.txt');
+    const child = spawn('sleep', ['30'], { stdio: 'ignore' });
+    fs.writeFileSync(trackFile, String(child.pid));
+    assert.ok(isAlive(child.pid), 'sanity check: process should be running before kill');
+
+    killAllLaunchedProcesses([trackFile]);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    assert.equal(isAlive(child.pid), false, 'the tracked process should be terminated');
+    assert.equal(fs.existsSync(trackFile), false, 'the track file should be removed after use');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('killAllLaunchedProcesses reaches a child spawned by the tracked process, not just the tracked pid itself', async () => {
+  const tmp = makeTmpDir();
+  try {
+    const trackFile = path.join(tmp, 'track.txt');
+    const grandchildPidFile = path.join(tmp, 'grandchild.pid');
+    const scriptFile = path.join(tmp, 'spawn-tree.sh');
+    fs.writeFileSync(scriptFile, [
+      '#!/bin/bash',
+      'sleep 30 &',
+      `echo $! > ${JSON.stringify(grandchildPidFile)}`,
+      'wait',
+    ].join('\n'));
+    fs.chmodSync(scriptFile, 0o755);
+
+    // detached: true so this shell becomes its own process-group leader, matching how
+    // Terminal.app's tab/shell is the foreground group leader for whatever it spawns.
+    const child = spawn(scriptFile, [], { detached: true, stdio: 'ignore' });
+    fs.writeFileSync(trackFile, String(child.pid));
+
+    for (let i = 0; i < 50 && !fs.existsSync(grandchildPidFile); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const grandchildPid = parseInt(fs.readFileSync(grandchildPidFile, 'utf-8').trim(), 10);
+    assert.ok(isAlive(child.pid), 'sanity check: parent should be running before kill');
+    assert.ok(isAlive(grandchildPid), 'sanity check: grandchild should be running before kill');
+
+    killAllLaunchedProcesses([trackFile]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(isAlive(child.pid), false, 'the tracked process should be terminated');
+    assert.equal(isAlive(grandchildPid), false, 'a child spawned by the tracked process should also die (process-group kill)');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('killAllLaunchedProcesses silently ignores a track file that was never written (run never actually started)', () => {
+  const tmp = makeTmpDir();
+  try {
+    assert.doesNotThrow(() => killAllLaunchedProcesses([path.join(tmp, 'never-existed.txt')]));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('killAllLaunchedProcesses silently ignores a track file whose pid has already exited', async () => {
+  const tmp = makeTmpDir();
+  try {
+    const trackFile = path.join(tmp, 'track.txt');
+    const child = spawn('true', [], { stdio: 'ignore' });
+    await new Promise((resolve) => child.on('exit', resolve));
+    fs.writeFileSync(trackFile, String(child.pid));
+    assert.doesNotThrow(() => killAllLaunchedProcesses([trackFile]));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
