@@ -163,6 +163,55 @@ test('buildClaudeMd references the resolved ButterCut path when configured, or s
   assert.ok(withoutPath.includes('not configured in Settings'));
 });
 
+test('buildClaudeMd tells Claude the exact resolved whisper/ffmpeg binaries to use, not just the app Settings panel', () => {
+  const base = {
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: {},
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: [],
+  };
+  // Regression: previously Settings' resolved whisper/ffmpeg paths were computed but
+  // never actually threaded into CLAUDE.md, so picking "whispermlx" in Settings had no
+  // effect on which binary Claude actually invoked during a session.
+  const withPaths = engine.buildClaudeMd({
+    ...base,
+    whisperPath: '/Users/edward/.local/bin/whispermlx',
+    ffmpegPath: '/opt/homebrew/bin/ffmpeg',
+  });
+  assert.match(withPaths, /Transcription \(Whisper\).*\/Users\/edward\/\.local\/bin\/whispermlx/);
+  assert.match(withPaths, /ffmpeg.*\/opt\/homebrew\/bin\/ffmpeg/);
+
+  const withoutPaths = engine.buildClaudeMd({ ...base, whisperPath: null, ffmpegPath: null });
+  assert.match(withoutPaths, /whisper \(not resolved by LP5000/);
+  assert.match(withoutPaths, /ffmpeg \(not resolved by LP5000/);
+});
+
+test('buildClaudeMd includes the Project Prompt as its own durable section when non-empty, and omits it entirely when blank', () => {
+  const base = {
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: {},
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: [],
+  };
+  const withPrompt = engine.buildClaudeMd({ ...base, projectPrompt: 'This is a 90-second Easter recap. Keep pacing upbeat.' });
+  assert.match(withPrompt, /Project Vision & Instructions/);
+  assert.ok(withPrompt.includes('This is a 90-second Easter recap. Keep pacing upbeat.'));
+
+  const withoutPrompt = engine.buildClaudeMd({ ...base, projectPrompt: '' });
+  assert.ok(!withoutPrompt.includes('Project Vision & Instructions'));
+
+  const whitespaceOnlyPrompt = engine.buildClaudeMd({ ...base, projectPrompt: '   \n  ' });
+  assert.ok(!whitespaceOnlyPrompt.includes('Project Vision & Instructions'));
+});
+
 test('bug fix 1: empty selection omits the target-files section entirely', () => {
   const md = engine.buildClaudeMd({
     workflowsDirs: realDirs(),

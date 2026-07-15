@@ -142,7 +142,7 @@ function defaultLastSettings() {
     customProjectName: '',
     dynamicTagValues: {},
     checkedTasks: {},
-    globalSecretSauce: '',
+    projectPrompt: '',
   };
 }
 

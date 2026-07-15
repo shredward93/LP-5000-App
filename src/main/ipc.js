@@ -66,6 +66,9 @@ function registerIpcHandlers() {
   handle('settingsStore:setButtercutOverride', (dirPath) => settingsStore.setButtercutOverride(dirPath).then((status) => ({ status })));
   handle('settingsStore:browseForButtercutDir', () => settingsStore.browseForButtercutDir());
   handle('settingsStore:updateButtercut', () => settingsStore.updateButtercut());
+  handle('settingsStore:listPromptTemplates', () => ({ templates: settingsStore.listPromptTemplates() }));
+  handle('settingsStore:savePromptTemplate', (template) => settingsStore.savePromptTemplate(template).then((templates) => ({ templates })));
+  handle('settingsStore:deletePromptTemplate', (id) => settingsStore.deletePromptTemplate(id).then((templates) => ({ templates })));
 
   // --- media ---
   handle('media:scan', (projectPath) => ({ files: engine.scanMediaFiles(projectPath) }));
@@ -104,7 +107,7 @@ function registerIpcHandlers() {
   handle('engine:buildAndRun', async (payload) => {
     const {
       projectId, projectPath, templateName, dynamicVars = {}, customProjName = '',
-      vibe, pacing, masterAudio, activeTasks = [], globalSauce = '', selectedFiles = [],
+      vibe, pacing, masterAudio, activeTasks = [], projectPrompt = '', selectedFiles = [],
     } = payload;
 
     const workflowsDirs = workflowsDirsEnsuredSeeded();
@@ -120,12 +123,17 @@ function registerIpcHandlers() {
 
     engine.verifyClaudeSettings(projectPath, settingsStore.getSettings().claudeOptions);
     const buttercutPath = settingsStore.getResolvedButtercutPath();
-    const md = engine.buildClaudeMd({ workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio, selectedFiles, buttercutPath });
+    const whisperPath = settingsStore.getResolvedToolPath('whisper');
+    const ffmpegPath = settingsStore.getResolvedToolPath('ffmpeg');
+    const md = engine.buildClaudeMd({
+      workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
+      projectPrompt, whisperPath, ffmpegPath, selectedFiles, buttercutPath,
+    });
     const claudeMdPath = path.join(projectPath, '.claude', 'CLAUDE.md');
     fs.mkdirSync(path.dirname(claudeMdPath), { recursive: true });
     fs.writeFileSync(claudeMdPath, md, 'utf-8');
 
-    const prompt = engine.buildRunPrompt(finalTasks, globalSauce, selectedFiles);
+    const prompt = engine.buildRunPrompt(finalTasks, projectPrompt, selectedFiles);
     launchClaudeInTerminal(projectPath, prompt, { claudeBinary: settingsStore.getResolvedToolPath('claude') });
 
     if (projectId) {
@@ -133,7 +141,7 @@ function registerIpcHandlers() {
         workflowTemplate: templateName, vibe, pacing, masterAudioSource: masterAudio,
         customProjectName: customProjName, dynamicTagValues: dynamicVars,
         checkedTasks: Object.fromEntries(activeTasks.map((t) => [t, true])),
-        globalSecretSauce: globalSauce,
+        projectPrompt,
       });
       await projectStore.markRun(projectId);
     }

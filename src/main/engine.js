@@ -625,10 +625,16 @@ function getWorkflowFormState(workflowsDirs, templateName, flags = {}) {
  * @param {string} opts.vibe
  * @param {string} opts.pacing
  * @param {string} opts.masterAudio
+ * @param {string} [opts.projectPrompt]
+ * @param {string | null} [opts.whisperPath]
+ * @param {string | null} [opts.ffmpegPath]
  * @param {string[]} [opts.selectedFiles]
  * @returns {string}
  */
-function buildClaudeMd({ workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio, selectedFiles, buttercutPath }) {
+function buildClaudeMd({
+  workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
+  projectPrompt, whisperPath, ffmpegPath, selectedFiles, buttercutPath,
+}) {
   let md;
   if (templateName === BUILD_FROM_SCRATCH) {
     md = `# PROJECT: ${customProjName}\n## 🎨 GUIDELINES\n- Pause & Resume Protocol: Wait for approval. Remember tasks.\n`;
@@ -649,11 +655,19 @@ function buildClaudeMd({ workflowsDirs, templateName, dynamicVars, customProjNam
       + 'for each one, all within this session.'
     : `- Master Audio Source: ${masterAudio}`;
   md += `\n\n## 🌍 PROJECT CONFIG\n- Vibe: ${vibe}\n- Pacing: ${pacing}\n${masterAudioLine}`;
+  if (projectPrompt && projectPrompt.trim()) {
+    md += `\n\n## 🧭 Project Vision & Instructions\n${projectPrompt.trim()}`;
+  }
   md += MULTI_ANGLE_BROLL_PROTOCOL;
   md += '\n- **Library Landmark:** Your source of truth is `library.yaml`. Because the BUTTERCUT_PROJECT_DIR environment variable is enforced, this file will ALWAYS be generated and located strictly inside the `libraries/` directory within the current project root.';
   md += buttercutPath
     ? `\n- **ButterCut Reference:** ButterCut (source clone) lives at \`${buttercutPath}\` — its \`lib/buttercut/\` Ruby helpers (contact sheets, script_extractor, library.yaml migrations, backup_libraries.rb) and \`skills/\` are available there for reference. Not required for every task: hand-authoring FCP7 XML directly (see Track Protocol above) has worked reliably for multi-angle/B-Roll cuts without going through ButterCut's own exporter.`
     : '\n- **ButterCut Reference:** ButterCut location is not configured in Settings — its Ruby helpers/skills are unavailable this run; hand-author FCP7 XML directly per the Track Protocol above.';
+  // Settings' resolved tool paths otherwise never reach Claude at all — without this,
+  // picking a whisper variant in Settings has no effect on which binary actually gets
+  // invoked during a session, since Claude just falls back to whatever it finds itself.
+  md += `\n- **Transcription (Whisper):** Use exactly this binary — do NOT substitute a different whisper install even if another is also on PATH: \`${whisperPath || 'whisper (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
+  md += `\n- **ffmpeg:** Use exactly this binary: \`${ffmpegPath || 'ffmpeg (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
   md += '\n- **Global Rules:** Extract true SMPTE timecode. No 0-base anchoring. Use Telegraphic visual transcripts. Pause for Sync Map review and take note of remaining tasks. ALWAYS export timelines using the FCP7 XML standard (.xml / <xmeml> format) for DaVinci Resolve compatibility. NEVER export as FCPXML (.fcpxml).';
   if (selectedFiles && selectedFiles.length > 0) {
     md += '\n\n## 📼 TARGET SOURCE FILES (this run)\n'
@@ -664,11 +678,11 @@ function buildClaudeMd({ workflowsDirs, templateName, dynamicVars, customProjNam
   return md;
 }
 
-/** @param {string[]} activeTasks @param {string} globalSauce @param {string[]} [selectedFiles] @returns {string} */
-function buildRunPrompt(activeTasks, globalSauce, selectedFiles) {
+/** @param {string[]} activeTasks @param {string} projectPrompt @param {string[]} [selectedFiles] @returns {string} */
+function buildRunPrompt(activeTasks, projectPrompt, selectedFiles) {
   let prompt = `Read ./.claude/CLAUDE.md. Execute: ${activeTasks.join(', ')}.`;
-  const sauce = (globalSauce || '').replaceAll('"', "'");
-  if (sauce.trim()) prompt += ` Note: ${sauce.trim()}.`;
+  const note = (projectPrompt || '').replaceAll('"', "'");
+  if (note.trim()) prompt += ` Note: ${note.trim()}.`;
   if (selectedFiles && selectedFiles.length > 0) {
     prompt += ` Use exactly these source files: ${selectedFiles.join(', ')}.`;
   }

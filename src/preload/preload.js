@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('api', {
     setButtercutOverride: (dirPath) => ipcRenderer.invoke('settingsStore:setButtercutOverride', dirPath),
     browseForButtercutDir: () => ipcRenderer.invoke('settingsStore:browseForButtercutDir'),
     updateButtercut: () => ipcRenderer.invoke('settingsStore:updateButtercut'),
+    listPromptTemplates: () => ipcRenderer.invoke('settingsStore:listPromptTemplates'),
+    savePromptTemplate: (template) => ipcRenderer.invoke('settingsStore:savePromptTemplate', template),
+    deletePromptTemplate: (id) => ipcRenderer.invoke('settingsStore:deletePromptTemplate', id),
   },
   media: {
     scan: (projectPath) => ipcRenderer.invoke('media:scan', projectPath),

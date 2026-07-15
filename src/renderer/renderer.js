@@ -20,6 +20,7 @@ const state = {
   footageStaging: /** @type {{sourcePath: string, category: string, cameraLabel: string}[]} */ ([]),
   footageLinkedItems: /** @type {any[]} */ ([]),
   footageExtras: /** @type {string[]} */ ([]),
+  promptTemplates: /** @type {{id: string, name: string, text: string}[]} */ ([]),
 };
 
 const el = (id) => document.getElementById(id);
@@ -197,7 +198,9 @@ async function selectProject(id) {
   state.dynamicVars = { ...(last.dynamicTagValues || {}) };
   state.customProjName = last.customProjectName || '';
   state.checkedTasks = { ...(last.checkedTasks || {}) };
-  el('globalSauce').value = last.globalSecretSauce || '';
+  el('promptBox').value = last.projectPrompt || '';
+  el('promptTemplateSelect').value = '';
+  el('newTemplateNameInput').value = '';
 
   if (!state.settings) state.settings = (await lp5000Api.settingsStore.getSettings()).settings;
   el('vibeSelect').value = last.vibe || state.settings.defaultVibe;
@@ -498,6 +501,62 @@ async function refreshMasterAudioOptions(preferredValue) {
   if (toKeep && options.includes(toKeep)) select.value = toKeep;
 }
 
+// --- Prompt templates (reusable Prompt box text, global across projects) ---
+
+async function loadPromptTemplatesForDropdown() {
+  const res = await lp5000Api.settingsStore.listPromptTemplates();
+  state.promptTemplates = res.ok ? res.templates : [];
+  const select = el('promptTemplateSelect');
+  const toKeep = select.value;
+  select.innerHTML = '<option value="">— Saved prompts —</option>'
+    + state.promptTemplates.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+  if (toKeep && state.promptTemplates.some((t) => t.id === toKeep)) select.value = toKeep;
+}
+
+function loadSelectedPromptTemplate() {
+  const id = el('promptTemplateSelect').value;
+  if (!id) { showBanner('Select a saved prompt to load first.', 'error'); return; }
+  const template = state.promptTemplates.find((t) => t.id === id);
+  if (!template) return;
+  el('promptBox').value = template.text;
+  el('newTemplateNameInput').value = template.name;
+}
+
+async function saveAsNewPromptTemplate() {
+  const name = el('newTemplateNameInput').value.trim();
+  if (!name) { showBanner('Type a name for the new prompt template first.', 'error'); return; }
+  const res = await lp5000Api.settingsStore.savePromptTemplate({ name, text: el('promptBox').value });
+  if (!res.ok) { showBanner(`Could not save template: ${res.error}`, 'error'); return; }
+  await loadPromptTemplatesForDropdown();
+  const saved = res.templates.find((t) => t.name === name);
+  if (saved) el('promptTemplateSelect').value = saved.id;
+  showBanner(`Saved prompt template "${name}".`, 'success');
+}
+
+async function updateSelectedPromptTemplate() {
+  const id = el('promptTemplateSelect').value;
+  if (!id) { showBanner('Select a saved prompt to update first.', 'error'); return; }
+  const existing = state.promptTemplates.find((t) => t.id === id);
+  const name = el('newTemplateNameInput').value.trim() || existing?.name;
+  const res = await lp5000Api.settingsStore.savePromptTemplate({ id, name, text: el('promptBox').value });
+  if (!res.ok) { showBanner(`Could not update template: ${res.error}`, 'error'); return; }
+  await loadPromptTemplatesForDropdown();
+  el('promptTemplateSelect').value = id;
+  showBanner(`Updated prompt template "${name}".`, 'success');
+}
+
+async function deleteSelectedPromptTemplate() {
+  const id = el('promptTemplateSelect').value;
+  if (!id) { showBanner('Select a saved prompt to delete first.', 'error'); return; }
+  const template = state.promptTemplates.find((t) => t.id === id);
+  const proceed = window.confirm(`Delete the saved prompt "${template?.name}"? This cannot be undone.`);
+  if (!proceed) return;
+  const res = await lp5000Api.settingsStore.deletePromptTemplate(id);
+  if (!res.ok) { showBanner(`Could not delete template: ${res.error}`, 'error'); return; }
+  await loadPromptTemplatesForDropdown();
+  el('newTemplateNameInput').value = '';
+}
+
 // --- Compile & Execute / Wrap-Up -------------------------------------------
 
 function collectActiveTasks() {
@@ -522,7 +581,7 @@ async function compileAndExecute() {
     pacing: el('pacingSelect').value,
     masterAudio: el('masterAudioSelect').value,
     activeTasks: collectActiveTasks(),
-    globalSauce: el('globalSauce').value,
+    projectPrompt: el('promptBox').value,
     selectedFiles: [...state.selectedFiles],
   };
   el('compileBtn').disabled = true;
@@ -679,6 +738,10 @@ el('templateSelect').addEventListener('change', refreshFormState);
 el('toggleFilesBtn').addEventListener('click', toggleAllFootageSelection);
 el('compileBtn').addEventListener('click', compileAndExecute);
 el('wrapUpBtn').addEventListener('click', wrapUp);
+el('loadPromptTemplateBtn').addEventListener('click', loadSelectedPromptTemplate);
+el('saveAsPromptTemplateBtn').addEventListener('click', saveAsNewPromptTemplate);
+el('updatePromptTemplateBtn').addEventListener('click', updateSelectedPromptTemplate);
+el('deletePromptTemplateBtn').addEventListener('click', deleteSelectedPromptTemplate);
 el('settingsBtn').addEventListener('click', openSettings);
 el('closeSettingsBtn').addEventListener('click', closeSettings);
 el('openWorkflowsFolderBtn').addEventListener('click', openWorkflowsFolder);
@@ -689,6 +752,7 @@ el('openWorkflowsFolderBtn').addEventListener('click', openWorkflowsFolder);
 // behavior behind it; this wires it up to the most-recently-opened project.
 async function initApp() {
   const projects = await loadRecentProjects();
+  await loadPromptTemplatesForDropdown();
   if (!state.settings) state.settings = (await lp5000Api.settingsStore.getSettings()).settings;
   const mostRecent = projects.find((p) => !p.archived);
   if (state.settings.ui.reopenLastProjectOnLaunch && mostRecent) {

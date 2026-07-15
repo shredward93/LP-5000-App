@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { app, dialog } = require('electron');
 const { readJsonWithDefaults, writeJsonAtomic, createWriteQueue } = require('./jsonStore');
@@ -44,6 +45,9 @@ function defaultSettings() {
     // same {mode, overridePath, autoDetectedPath, resolvedPath, status} shape, but
     // detected via directory-existence rather than PATH search.
     buttercut: makeDefaultToolEntry(),
+    // Reusable Prompt box text, global (not per-project) so a template built for one
+    // project's vision/instructions can be loaded again in a future project.
+    promptTemplates: /** @type {{id: string, name: string, text: string}[]} */ ([]),
   };
 }
 
@@ -356,6 +360,41 @@ async function setWorkflowsOverrideDir(dirPath) {
   return updateSettings({ workflows: { overrideDir: dirPath || null } });
 }
 
+// --- Prompt templates (reusable Prompt box text, global across projects) ---------
+
+function listPromptTemplates() {
+  return structuredClone(load().promptTemplates || []);
+}
+
+/**
+ * Creates a new template (no `id`) or overwrites an existing one (matching `id`).
+ * @param {{id?: string, name: string, text: string}} template
+ */
+async function savePromptTemplate({ id, name, text } = {}) {
+  const settings = load();
+  if (!settings.promptTemplates) settings.promptTemplates = [];
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) throw new Error('Template name is required.');
+  if (id) {
+    const existing = settings.promptTemplates.find((t) => t.id === id);
+    if (!existing) throw new Error(`Unknown prompt template id: ${id}`);
+    existing.name = trimmedName;
+    existing.text = text || '';
+  } else {
+    settings.promptTemplates.push({ id: crypto.randomUUID(), name: trimmedName, text: text || '' });
+  }
+  await persist();
+  return listPromptTemplates();
+}
+
+/** @param {string} id */
+async function deletePromptTemplate(id) {
+  const settings = load();
+  settings.promptTemplates = (settings.promptTemplates || []).filter((t) => t.id !== id);
+  await persist();
+  return listPromptTemplates();
+}
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -371,6 +410,9 @@ module.exports = {
   browseForButtercutDir,
   getResolvedButtercutPath,
   updateButtercut,
+  listPromptTemplates,
+  savePromptTemplate,
+  deletePromptTemplate,
   WHISPER_VARIANTS,
   CLAUDE_MODEL_OPTIONS,
   CLAUDE_EFFORT_OPTIONS,

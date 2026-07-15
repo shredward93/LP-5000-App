@@ -102,13 +102,25 @@
         <legend>🚀 Stage 4: Export &amp; Delivery</legend>
         <ul id="stage4Tasks" class="task-list"></ul>
       </fieldset>
+
+      <fieldset class="panel panel-wide">
+        <legend>📝 Prompt</legend>
+        <p class="hint">The overall context, vision, and specific instructions for this project — anything Claude should know. Saved into CLAUDE.md and the initial run prompt every time you Compile &amp; Execute.</p>
+        <textarea id="promptBox" rows="5" placeholder="e.g. This is a 90-second recap video for our Easter service. Keep pacing upbeat, favor wide shots of the crowd, and always cut to the worship leader's face on key lyrics…"></textarea>
+        <div class="row prompt-template-row">
+          <select id="promptTemplateSelect"><option value="">— Saved prompts —</option></select>
+          <button id="loadPromptTemplateBtn" class="ghost-btn">Load</button>
+          <button id="deletePromptTemplateBtn" class="ghost-btn">Delete</button>
+        </div>
+        <div class="row prompt-template-row">
+          <input id="newTemplateNameInput" type="text" placeholder="Template name" />
+          <button id="saveAsPromptTemplateBtn" class="ghost-btn">💾 Save as New</button>
+          <button id="updatePromptTemplateBtn" class="ghost-btn">Update Selected</button>
+        </div>
+      </fieldset>
       </div>
 
       <div class="workspace-footer">
-        <label class="sauce-label">🍯 Global Secret Sauce / Project Notes
-          <input id="globalSauce" type="text" placeholder="Anything Claude should know for this run…" />
-        </label>
-
         <div class="actions">
           <button id="compileBtn" class="compile-btn">🚀 COMPILE &amp; EXECUTE</button>
           <button id="wrapUpBtn" class="wrap-btn">🧹 WRAP-UP &amp; BACKUP PROJECT</button>
