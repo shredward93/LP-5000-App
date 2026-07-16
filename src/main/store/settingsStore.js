@@ -10,10 +10,11 @@ const { app, dialog } = require('electron');
 const { readJsonWithDefaults, writeJsonAtomic, createWriteQueue } = require('./jsonStore');
 
 const TOOLS = /** @type {const} */ (['claude', 'ffmpeg', 'whisper']);
-// whispermlx (Apple Silicon-accelerated) is the preferred variant; plain `whisper`
-// (openai-whisper) and `mlx_whisper` are kept as selectable alternatives since all
-// three are commonly installed side by side via pyenv/uv and shadow each other on PATH.
-const WHISPER_VARIANTS = ['whispermlx', 'mlx_whisper', 'whisper'];
+// whispermlx (Apple Silicon-accelerated) is the preferred variant on Mac; `whisperx`
+// is the cross-platform pick (Windows has no MLX support at all), and plain `whisper`
+// (openai-whisper) / `mlx_whisper` are kept as selectable alternatives since all four
+// are commonly installed side by side via pyenv/uv and shadow each other on PATH.
+const WHISPER_VARIANTS = ['whispermlx', 'whisperx', 'mlx_whisper', 'whisper'];
 const CLAUDE_MODEL_OPTIONS = ['default', 'sonnet', 'opus', 'fable'];
 const CLAUDE_EFFORT_OPTIONS = ['default', 'low', 'medium', 'high', 'xhigh', 'max'];
 
