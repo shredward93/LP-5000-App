@@ -7,7 +7,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
-const { posixQuote, powershellQuote, killAllLaunchedProcesses } = require('../src/main/terminalHandoff');
+const {
+  posixQuote, powershellQuote, killAllLaunchedProcesses,
+  buildPosixLauncherScript, buildWindowsLauncherScript,
+} = require('../src/main/terminalHandoff');
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'lp5000-th-test-'));
@@ -55,6 +58,68 @@ test('powershellQuote escapes an embedded single quote by doubling it', () => {
 test('powershellQuote wraps a value containing a $(...) subexpression as an inert literal', () => {
   const quoted = powershellQuote('Sermon $(evil-command)');
   assert.equal(quoted, "'Sermon $(evil-command)'");
+});
+
+test('buildPosixLauncherScript execs claude directly for a fresh run and safely quotes a malicious project path', () => {
+  const tmp = makeTmpDir();
+  try {
+    const markerFile = path.join(tmp, 'PWNED');
+    const maliciousPath = `/tmp/Wedding $(touch ${markerFile})`;
+    const argsFile = path.join(tmp, 'args.txt');
+    const fakeClaude = path.join(tmp, 'fake-claude.sh');
+    fs.writeFileSync(fakeClaude, `#!/bin/bash\necho "$@" > ${JSON.stringify(argsFile)}\n`);
+    fs.chmodSync(fakeClaude, 0o755);
+    const trackFile = path.join(tmp, 'track.txt');
+
+    const script = buildPosixLauncherScript({ projectPath: maliciousPath, claudeCommand: fakeClaude, trackFile, resume: false });
+    assert.ok(!script.includes('--continue'), 'a fresh run must not pass --continue');
+    assert.match(script, /WAKING UP CLAUDE IN INTERACTIVE MODE/);
+    const scriptPath = path.join(tmp, 'run.sh');
+    fs.writeFileSync(scriptPath, script);
+    fs.chmodSync(scriptPath, 0o755);
+    execFileSync('bash', [scriptPath]);
+
+    assert.equal(fs.existsSync(markerFile), false, 'the injected command embedded in the project path must not have executed');
+    assert.equal(fs.readFileSync(argsFile, 'utf-8').trim(), '', 'a fresh run should invoke claude with no extra arguments');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('buildPosixLauncherScript execs claude with --continue for a resumed run', () => {
+  const tmp = makeTmpDir();
+  try {
+    const argsFile = path.join(tmp, 'args.txt');
+    const fakeClaude = path.join(tmp, 'fake-claude.sh');
+    fs.writeFileSync(fakeClaude, `#!/bin/bash\necho "$@" > ${JSON.stringify(argsFile)}\n`);
+    fs.chmodSync(fakeClaude, 0o755);
+    const trackFile = path.join(tmp, 'track.txt');
+    const projectPath = path.join(tmp, 'My Project');
+    fs.mkdirSync(projectPath);
+
+    const script = buildPosixLauncherScript({ projectPath, claudeCommand: fakeClaude, trackFile, resume: true });
+    assert.match(script, /RESUMING YOUR LAST CLAUDE SESSION/);
+    const scriptPath = path.join(tmp, 'run.sh');
+    fs.writeFileSync(scriptPath, script);
+    fs.chmodSync(scriptPath, 0o755);
+    execFileSync('bash', [scriptPath]);
+
+    assert.equal(fs.readFileSync(argsFile, 'utf-8').trim(), '--continue', 'a resumed run should invoke claude with exactly --continue');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('buildWindowsLauncherScript includes --continue only when resuming', () => {
+  const trackFile = 'C:\\Temp\\track.txt';
+  const fresh = buildWindowsLauncherScript({ projectPath: 'C:\\Projects\\My Wedding', claudeCommand: 'claude', trackFile, resume: false });
+  assert.ok(!fresh.includes('--continue'), 'a fresh run must not pass --continue');
+  assert.ok(fresh.includes("& 'claude'"));
+  assert.match(fresh, /WAKING UP CLAUDE IN INTERACTIVE MODE/);
+
+  const resumed = buildWindowsLauncherScript({ projectPath: 'C:\\Projects\\My Wedding', claudeCommand: 'claude', trackFile, resume: true });
+  assert.ok(resumed.includes("& 'claude' --continue"));
+  assert.match(resumed, /RESUMING YOUR LAST CLAUDE SESSION/);
 });
 
 function isAlive(pid) {

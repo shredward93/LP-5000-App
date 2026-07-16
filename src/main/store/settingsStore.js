@@ -395,6 +395,72 @@ async function deletePromptTemplate(id) {
   return listPromptTemplates();
 }
 
+/**
+ * Merges imported templates into existing ones, matched by case-insensitive trimmed
+ * name — an id collision across two machines is essentially impossible since ids are
+ * random UUIDs, but the name is what a person actually recognizes as "the same
+ * template" when someone hands them a file. Existing templates keep their id; new
+ * ones get a fresh id so an import can never collide with the receiving machine's own.
+ * @param {{id: string, name: string, text: string}[]} existing
+ * @param {{name: string, text: string}[]} incoming
+ */
+function mergeImportedTemplates(existing, incoming) {
+  const templates = existing.map((t) => ({ ...t }));
+  let addedCount = 0;
+  let updatedCount = 0;
+  for (const raw of incoming) {
+    const name = String(raw?.name || '').trim();
+    if (!name) continue;
+    const text = String(raw?.text || '');
+    const match = templates.find((t) => t.name.trim().toLowerCase() === name.toLowerCase());
+    if (match) {
+      match.text = text;
+      updatedCount++;
+    } else {
+      templates.push({ id: crypto.randomUUID(), name, text });
+      addedCount++;
+    }
+  }
+  return { templates, addedCount, updatedCount };
+}
+
+/** Writes every saved Prompt Template to a JSON file the user picks — for handing to someone else or a different machine. */
+async function exportPromptTemplatesToFile() {
+  const result = await dialog.showSaveDialog({
+    title: 'Export Prompt Templates',
+    defaultPath: 'lp5000-prompt-templates.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  const promptTemplates = listPromptTemplates();
+  const payload = { schemaVersion: 1, exportedAt: new Date().toISOString(), promptTemplates };
+  fs.writeFileSync(result.filePath, JSON.stringify(payload, null, 2), 'utf-8');
+  return { canceled: false, filePath: result.filePath, count: promptTemplates.length };
+}
+
+/** Reads a JSON file exported by `exportPromptTemplatesToFile` and merges it into this machine's templates. */
+async function importPromptTemplatesFromFile() {
+  const result = await dialog.showOpenDialog({
+    title: 'Import Prompt Templates',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true };
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8'));
+  } catch (err) {
+    throw new Error(`Could not read that file as JSON: ${err instanceof Error ? err.message : err}`);
+  }
+  const incoming = Array.isArray(parsed?.promptTemplates) ? parsed.promptTemplates : Array.isArray(parsed) ? parsed : null;
+  if (!incoming) throw new Error('That file does not look like an LP 5000 prompt-templates export.');
+  const settings = load();
+  const { templates, addedCount, updatedCount } = mergeImportedTemplates(settings.promptTemplates || [], incoming);
+  settings.promptTemplates = templates;
+  await persist();
+  return { canceled: false, addedCount, updatedCount, totalCount: templates.length };
+}
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -413,6 +479,8 @@ module.exports = {
   listPromptTemplates,
   savePromptTemplate,
   deletePromptTemplate,
+  exportPromptTemplatesToFile,
+  importPromptTemplatesFromFile,
   WHISPER_VARIANTS,
   CLAUDE_MODEL_OPTIONS,
   CLAUDE_EFFORT_OPTIONS,
@@ -421,4 +489,5 @@ module.exports = {
   // for) — both are pure and safe to exercise directly under plain `node --test`.
   deepMergeInPlace,
   requireKnownTool,
+  mergeImportedTemplates,
 };

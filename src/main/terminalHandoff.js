@@ -35,23 +35,66 @@ function powershellQuote(value) {
 }
 
 /**
- * Copy the prompt to the clipboard and open a fresh Terminal/PowerShell window
- * cd'd into the project with BUTTERCUT_PROJECT_DIR set, running `claude`
- * (no --continue/--resume — every run starts a fresh conversation, by design).
- * Ported from gui.py's execute_in_terminal; spawn(cmd, argsArray) is used for the
- * outer process launch so paths containing spaces never need manual shell-quoting —
- * but projectPath/claudeBinary are also embedded as literal text inside a *generated
- * script file*, which spawn()'s argument-array safety does not cover, so they are
- * quoted here too (a folder name containing `"` or `$(...)` would otherwise break
- * out of the naive `"${projectPath}"` interpolation and execute as script syntax).
+ * Pure script-text builder for macOS/Linux — no Electron dependency, so this is
+ * directly unit-testable. `resume` appends `--continue` (Claude Code's own "most
+ * recent conversation in the current directory" flag) instead of a fresh session;
+ * LP5000 never needs to track/parse Claude's own session storage to make that work.
+ * @param {{projectPath: string, claudeCommand: string, trackFile: string, resume: boolean}} opts
+ * @returns {string}
+ */
+function buildPosixLauncherScript({ projectPath, claudeCommand, trackFile, resume }) {
+  const bannerText = resume ? 'RESUMING YOUR LAST CLAUDE SESSION...' : 'WAKING UP CLAUDE IN INTERACTIVE MODE...';
+  return [
+    '#!/bin/bash',
+    'echo "----------------------------------------"',
+    `echo " ${bannerText}"`,
+    'echo "----------------------------------------"',
+    `export BUTTERCUT_PROJECT_DIR=${posixQuote(projectPath)}`,
+    `cd ${posixQuote(projectPath)}`,
+    // $$ recorded here, then exec replaces this shell with claude IN PLACE (same
+    // pid) — so the tracked pid is the actual claude process, not a shell wrapping it.
+    `echo $$ > ${posixQuote(trackFile)}`,
+    resume ? `exec ${posixQuote(claudeCommand)} --continue` : `exec ${posixQuote(claudeCommand)}`,
+  ].join('\n');
+}
+
+/** Windows counterpart of {@link buildPosixLauncherScript}; same options, same reasoning. */
+function buildWindowsLauncherScript({ projectPath, claudeCommand, trackFile, resume }) {
+  const bannerText = resume ? 'RESUMING YOUR LAST CLAUDE SESSION...' : 'WAKING UP CLAUDE IN INTERACTIVE MODE...';
+  return [
+    'Write-Host "----------------------------------------" -ForegroundColor Cyan',
+    `Write-Host " ${bannerText}" -ForegroundColor Green`,
+    'Write-Host "----------------------------------------" -ForegroundColor Cyan',
+    `$env:BUTTERCUT_PROJECT_DIR=${powershellQuote(projectPath)}`,
+    `Set-Location -LiteralPath ${powershellQuote(projectPath)}`,
+    // $PID is this PowerShell host's own pid; claude.exe runs as its child, so
+    // killing this pid with /T (tree) at app quit takes claude down with it.
+    `$PID | Out-File -FilePath ${powershellQuote(trackFile)} -Encoding ascii`,
+    resume ? `& ${powershellQuote(claudeCommand)} --continue` : `& ${powershellQuote(claudeCommand)}`,
+  ].join('\r\n');
+}
+
+/**
+ * Copies the prompt to the clipboard (skipped when resuming — there's nothing to
+ * paste) and opens a fresh Terminal/PowerShell window cd'd into the project with
+ * BUTTERCUT_PROJECT_DIR set, running `claude` (or `claude --continue` when resuming
+ * an interrupted session). Ported from gui.py's execute_in_terminal; spawn(cmd,
+ * argsArray) is used for the outer process launch so paths containing spaces never
+ * need manual shell-quoting — but projectPath/claudeBinary are also embedded as
+ * literal text inside a *generated script file*, which spawn()'s argument-array
+ * safety does not cover, so they are quoted here too (a folder name containing `"`
+ * or `$(...)` would otherwise break out of the naive `"${projectPath}"`
+ * interpolation and execute as script syntax).
  * @param {string} projectPath
  * @param {string} prompt
- * @param {{claudeBinary?: string | null}} [opts] Resolved `claude` binary path from
- *   settingsStore (Settings panel override or auto-detected); falls back to bare
- *   `claude` (PATH lookup) if not provided/resolved.
+ * @param {{claudeBinary?: string | null, resume?: boolean}} [opts] Resolved `claude`
+ *   binary path from settingsStore (Settings panel override or auto-detected); falls
+ *   back to bare `claude` (PATH lookup) if not provided/resolved. `resume: true`
+ *   continues the most recent conversation in this project instead of starting fresh.
  */
 function launchClaudeInTerminal(projectPath, prompt, opts = {}) {
-  clipboard.writeText(prompt);
+  const resume = Boolean(opts.resume);
+  if (prompt) clipboard.writeText(prompt);
   const stamp = Date.now();
   const claudeCommand = opts.claudeBinary || 'claude';
   const trackFile = path.join(app.getPath('temp'), `lp5000_pid_${stamp}.txt`);
@@ -59,17 +102,7 @@ function launchClaudeInTerminal(projectPath, prompt, opts = {}) {
 
   if (process.platform === 'win32') {
     const scriptPath = path.join(app.getPath('temp'), `lp5000_run_${stamp}.ps1`);
-    fs.writeFileSync(scriptPath, [
-      'Write-Host "----------------------------------------" -ForegroundColor Cyan',
-      'Write-Host " WAKING UP CLAUDE IN INTERACTIVE MODE..." -ForegroundColor Green',
-      'Write-Host "----------------------------------------" -ForegroundColor Cyan',
-      `$env:BUTTERCUT_PROJECT_DIR=${powershellQuote(projectPath)}`,
-      `Set-Location -LiteralPath ${powershellQuote(projectPath)}`,
-      // $PID is this PowerShell host's own pid; claude.exe runs as its child, so
-      // killing this pid with /T (tree) at app quit takes claude down with it.
-      `$PID | Out-File -FilePath ${powershellQuote(trackFile)} -Encoding ascii`,
-      `& ${powershellQuote(claudeCommand)}`,
-    ].join('\r\n'), 'utf-8');
+    fs.writeFileSync(scriptPath, buildWindowsLauncherScript({ projectPath, claudeCommand, trackFile, resume }), 'utf-8');
     // The empty "" is a required placeholder TITLE argument for `start` — without it,
     // a quoted path-with-spaces as the first token is misread as the window title.
     spawn('cmd.exe', ['/c', 'start', '""', 'powershell', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
@@ -79,18 +112,7 @@ function launchClaudeInTerminal(projectPath, prompt, opts = {}) {
     }).unref();
   } else {
     const scriptPath = path.join(app.getPath('temp'), `lp5000_run_${stamp}.command`);
-    fs.writeFileSync(scriptPath, [
-      '#!/bin/bash',
-      'echo "----------------------------------------"',
-      'echo " WAKING UP CLAUDE IN INTERACTIVE MODE..."',
-      'echo "----------------------------------------"',
-      `export BUTTERCUT_PROJECT_DIR=${posixQuote(projectPath)}`,
-      `cd ${posixQuote(projectPath)}`,
-      // $$ recorded here, then exec replaces this shell with claude IN PLACE (same
-      // pid) — so the tracked pid is the actual claude process, not a shell wrapping it.
-      `echo $$ > ${posixQuote(trackFile)}`,
-      `exec ${posixQuote(claudeCommand)}`,
-    ].join('\n'), 'utf-8');
+    fs.writeFileSync(scriptPath, buildPosixLauncherScript({ projectPath, claudeCommand, trackFile, resume }), 'utf-8');
     fs.chmodSync(scriptPath, 0o755);
     spawn('open', ['-a', 'Terminal', scriptPath], { detached: true, stdio: 'ignore' }).unref();
   }
@@ -127,4 +149,11 @@ function killAllLaunchedProcesses(trackFiles = [...activeRunTrackFiles]) {
   }
 }
 
-module.exports = { launchClaudeInTerminal, killAllLaunchedProcesses, posixQuote, powershellQuote };
+module.exports = {
+  launchClaudeInTerminal,
+  killAllLaunchedProcesses,
+  posixQuote,
+  powershellQuote,
+  buildPosixLauncherScript,
+  buildWindowsLauncherScript,
+};

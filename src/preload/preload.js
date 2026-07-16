@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('api', {
     listPromptTemplates: () => ipcRenderer.invoke('settingsStore:listPromptTemplates'),
     savePromptTemplate: (template) => ipcRenderer.invoke('settingsStore:savePromptTemplate', template),
     deletePromptTemplate: (id) => ipcRenderer.invoke('settingsStore:deletePromptTemplate', id),
+    exportPromptTemplates: () => ipcRenderer.invoke('settingsStore:exportPromptTemplates'),
+    importPromptTemplates: () => ipcRenderer.invoke('settingsStore:importPromptTemplates'),
   },
   media: {
     scan: (projectPath) => ipcRenderer.invoke('media:scan', projectPath),
@@ -49,6 +51,8 @@ contextBridge.exposeInMainWorld('api', {
     link: (projectPath, assignments) => ipcRenderer.invoke('footage:link', projectPath, assignments),
     list: (projectPath) => ipcRenderer.invoke('footage:list', projectPath),
     unlink: (linkPath) => ipcRenderer.invoke('footage:unlink', linkPath),
+    getFileLabels: (projectPath) => ipcRenderer.invoke('footage:getFileLabels', projectPath),
+    setFileLabel: (projectPath, relativePath, label) => ipcRenderer.invoke('footage:setFileLabel', projectPath, relativePath, label),
   },
   workflows: {
     listOptions: () => ipcRenderer.invoke('workflows:listOptions'),
@@ -61,5 +65,6 @@ contextBridge.exposeInMainWorld('api', {
   engine: {
     buildAndRun: (payload) => ipcRenderer.invoke('engine:buildAndRun', payload),
     wrapUp: (projectPath) => ipcRenderer.invoke('engine:wrapUp', projectPath),
+    resumeSession: (projectPath, projectId) => ipcRenderer.invoke('engine:resumeSession', projectPath, projectId),
   },
 });

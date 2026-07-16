@@ -20,6 +20,7 @@ const state = {
   footageStaging: /** @type {{sourcePath: string, category: string, cameraLabel: string}[]} */ ([]),
   footageLinkedItems: /** @type {any[]} */ ([]),
   footageExtras: /** @type {string[]} */ ([]),
+  fileLabels: /** @type {Record<string,string>} */ ({}),
   promptTemplates: /** @type {{id: string, name: string, text: string}[]} */ ([]),
 };
 
@@ -211,7 +212,8 @@ async function selectProject(id) {
   await refreshFootageList();
   await stageLooseFiles();
   renderFootageStaging();
-  await refreshMasterAudioOptions(last.masterAudioSource);
+  await refreshAudioSourceOptions(last.masterAudioSource, last.transcriptionSource);
+  el('syncMethodSelect').value = last.syncMethod || 'Waveform';
   await refreshFormState();
 }
 
@@ -397,7 +399,7 @@ async function linkFootage() {
     state.footageStaging = [];
     renderFootageStaging();
     await refreshFootageList();
-    await refreshMasterAudioOptions();
+    await refreshAudioSourceOptions();
     const note = skipped.length > 0 ? ` ${skipped.length} skipped: ${skipped.map((s) => s.reason).join('; ')}` : '';
     showBanner(`Linked ${linked.length} file(s) into the project.${note}`, skipped.length > 0 ? 'error' : 'success');
   } finally {
@@ -412,9 +414,10 @@ async function linkFootage() {
 // project folder predating this app) still shows up as selectable, just without an
 // Unlink button since there's no structured role to unlink it from.
 async function refreshFootageList() {
-  const [footageRes, scanRes] = await Promise.all([
+  const [footageRes, scanRes, labelsRes] = await Promise.all([
     lp5000Api.footage.list(state.activeProject.path),
     lp5000Api.media.scan(state.activeProject.path),
+    lp5000Api.footage.getFileLabels(state.activeProject.path),
   ]);
   if (!footageRes.ok) { showBanner(`Could not list linked footage: ${footageRes.error}`, 'error'); return; }
   if (!scanRes.ok) { showBanner(`Could not scan media files: ${scanRes.error}`, 'error'); return; }
@@ -425,10 +428,35 @@ async function refreshFootageList() {
 
   state.footageLinkedItems = linkedItems;
   state.footageExtras = extras;
+  state.fileLabels = labelsRes.ok ? labelsRes.labels : {};
   state.scannedFiles = [...linkedItems.map((i) => i.relativePath), ...extras];
   state.selectedFiles = new Set(state.scannedFiles); // default: everything on disk, explicitly named
 
   renderFootageList();
+}
+
+// Generic camera filenames (GH010045.MP4, C0023.MP4, ...) tell you nothing on their
+// own — this note travels into CLAUDE.md's TARGET SOURCE FILES section so Claude can
+// be pointed at exactly what a clip is, independent of whatever the camera named it.
+function fileNoteInputHtml(relativePath) {
+  const value = state.fileLabels[relativePath] || '';
+  return `<input data-role="fileNote" type="text" placeholder="What is this clip? (optional note for Claude)" value="${escapeHtml(value)}" />`;
+}
+
+function wireFileNoteInput(li, relativePath) {
+  const input = li.querySelector('[data-role="fileNote"]');
+  input.addEventListener('click', (e) => e.stopPropagation());
+  const commit = async () => {
+    const value = input.value.trim();
+    state.fileLabels[relativePath] = value;
+    const res = await lp5000Api.footage.setFileLabel(state.activeProject.path, relativePath, value);
+    if (!res.ok) showBanner(`Could not save note: ${res.error}`, 'error');
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+  });
 }
 
 function renderFootageList() {
@@ -447,27 +475,31 @@ function renderFootageList() {
     li.innerHTML = `
       <label><input type="checkbox" ${state.selectedFiles.has(item.relativePath) ? 'checked' : ''} />
         ${escapeHtml(item.role)}: ${escapeHtml(baseNameOf(item.linkPath))} ${target}</label>
+      ${fileNoteInputHtml(item.relativePath)}
       <button data-action="unlink" class="ghost-btn">Unlink</button>
     `;
-    li.querySelector('input').addEventListener('change', (e) => {
+    li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
       if (e.target.checked) state.selectedFiles.add(item.relativePath);
       else state.selectedFiles.delete(item.relativePath);
     });
+    wireFileNoteInput(li, item.relativePath);
     li.querySelector('[data-action="unlink"]').addEventListener('click', async () => {
       const r = await lp5000Api.footage.unlink(item.linkPath);
       if (!r.ok) { showBanner(`Could not unlink: ${r.error}`, 'error'); return; }
+      await lp5000Api.footage.setFileLabel(state.activeProject.path, item.relativePath, ''); // clear stale note
       await refreshFootageList();
-      await refreshMasterAudioOptions();
+      await refreshAudioSourceOptions();
     });
     container.appendChild(li);
   }
   for (const relPath of state.footageExtras) {
     const li = document.createElement('li');
-    li.innerHTML = `<label><input type="checkbox" ${state.selectedFiles.has(relPath) ? 'checked' : ''} /> ${escapeHtml(relPath)}</label>`;
-    li.querySelector('input').addEventListener('change', (e) => {
+    li.innerHTML = `<label><input type="checkbox" ${state.selectedFiles.has(relPath) ? 'checked' : ''} /> ${escapeHtml(relPath)}</label>${fileNoteInputHtml(relPath)}`;
+    li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
       if (e.target.checked) state.selectedFiles.add(relPath);
       else state.selectedFiles.delete(relPath);
     });
+    wireFileNoteInput(li, relPath);
     container.appendChild(li);
   }
 }
@@ -478,27 +510,39 @@ function toggleAllFootageSelection() {
   renderFootageList();
 }
 
-// --- Master Audio Source: dynamic camera list, not a fixed A-D ---------------
+// --- Master Audio Source / Transcription Source: dynamic camera list, not fixed A-D --
 
-// Must exactly match engine.js's INDEPENDENT_JOBS_MASTER_AUDIO — main/renderer can't
-// share a module, so this sentinel is duplicated here the same way MULTICAM_SYNC_TASK
-// is above. Picking it tells buildClaudeMd these are unrelated single-camera sources
-// (e.g. separate sermons from different campuses) to run as independent jobs, each
-// using its own on-camera audio, rather than one shared master audio for a multicam sync.
+// These sentinels must exactly match their engine.js counterparts — main/renderer
+// can't share a module, so they're duplicated here the same way MULTICAM_SYNC_TASK is
+// above. INDEPENDENT_JOBS_MASTER_AUDIO tells buildClaudeMd these are unrelated
+// single-camera sources (e.g. separate sermons from different campuses) to run as
+// independent jobs, each using its own on-camera audio, rather than one shared master
+// audio for a multicam sync. The TRANSCRIPTION_SOURCE_* pair lets Transcription Source
+// be set independently of Master Audio Source (which governs the final A1 program
+// audio) — e.g. merging several external mics/recorders just for the transcript.
 const INDEPENDENT_JOBS_MASTER_AUDIO = "Each Camera's Own Audio (independent per-file jobs, not multicam)";
+const TRANSCRIPTION_SOURCE_SAME_AS_MASTER = 'Same as Master Audio Source';
+const TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO = 'Merge All Ext Audio Files';
 
-async function refreshMasterAudioOptions(preferredValue) {
-  const select = el('masterAudioSelect');
-  const toKeep = preferredValue !== undefined ? preferredValue : select.value;
+async function refreshAudioSourceOptions(preferredMasterAudio, preferredTranscriptionSource) {
   const labels = await loadCameraLabelsForDatalist();
-  const options = [
+  const baseOptions = [
     ...labels.map((l) => `A-Roll (${l})`),
     'Ext_Audio Folder',
     'B-Roll (Nat Sound)',
     INDEPENDENT_JOBS_MASTER_AUDIO,
   ];
-  select.innerHTML = options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
-  if (toKeep && options.includes(toKeep)) select.value = toKeep;
+
+  const masterSelect = el('masterAudioSelect');
+  const masterToKeep = preferredMasterAudio !== undefined ? preferredMasterAudio : masterSelect.value;
+  masterSelect.innerHTML = baseOptions.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  if (masterToKeep && baseOptions.includes(masterToKeep)) masterSelect.value = masterToKeep;
+
+  const transcriptionSelect = el('transcriptionSourceSelect');
+  const transcriptionToKeep = preferredTranscriptionSource !== undefined ? preferredTranscriptionSource : transcriptionSelect.value;
+  const transcriptionOptions = [TRANSCRIPTION_SOURCE_SAME_AS_MASTER, TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO, ...baseOptions];
+  transcriptionSelect.innerHTML = transcriptionOptions.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  if (transcriptionToKeep && transcriptionOptions.includes(transcriptionToKeep)) transcriptionSelect.value = transcriptionToKeep;
 }
 
 // --- Prompt templates (reusable Prompt box text, global across projects) ---
@@ -580,6 +624,8 @@ async function compileAndExecute() {
     vibe: el('vibeSelect').value,
     pacing: el('pacingSelect').value,
     masterAudio: el('masterAudioSelect').value,
+    syncMethod: el('syncMethodSelect').value,
+    transcriptionSource: el('transcriptionSourceSelect').value,
     activeTasks: collectActiveTasks(),
     projectPrompt: el('promptBox').value,
     selectedFiles: [...state.selectedFiles],
@@ -607,6 +653,20 @@ async function wrapUp() {
     showBanner('Wrap-up prompt copied to clipboard — Claude is awake!', 'success');
   } finally {
     el('wrapUpBtn').disabled = false;
+  }
+}
+
+// Recovers a session that got interrupted (terminal closed mid-run, etc.) via Claude
+// Code's own --continue — no prompt needed, Claude just resumes where it left off.
+async function resumeSession() {
+  if (!state.activeProject) return;
+  el('resumeSessionBtn').disabled = true;
+  try {
+    const res = await lp5000Api.engine.resumeSession(state.activeProject.path, state.activeProject.id);
+    if (!res.ok) { showBanner(`Could not resume session: ${res.error}`, 'error'); return; }
+    showBanner('Resuming your last Claude session in a new terminal window.', 'success');
+  } finally {
+    el('resumeSessionBtn').disabled = false;
   }
 }
 
@@ -728,6 +788,21 @@ async function openWorkflowsFolder() {
   if (!res.ok) showBanner(`Could not open workflows folder: ${res.error}`, 'error');
 }
 
+async function exportPromptTemplates() {
+  const res = await lp5000Api.settingsStore.exportPromptTemplates();
+  if (!res.ok) { showBanner(`Could not export templates: ${res.error}`, 'error'); return; }
+  if (res.canceled) return;
+  showBanner(`Exported ${res.count} template(s) to ${res.filePath}`, 'success');
+}
+
+async function importPromptTemplates() {
+  const res = await lp5000Api.settingsStore.importPromptTemplates();
+  if (!res.ok) { showBanner(`Could not import templates: ${res.error}`, 'error'); return; }
+  if (res.canceled) return;
+  await loadPromptTemplatesForDropdown();
+  showBanner(`Imported: ${res.addedCount} new, ${res.updatedCount} updated (${res.totalCount} total).`, 'success');
+}
+
 // --- Wiring -----------------------------------------------------------------
 
 el('openProjectBtn').addEventListener('click', openProjectFolder);
@@ -738,6 +813,7 @@ el('templateSelect').addEventListener('change', refreshFormState);
 el('toggleFilesBtn').addEventListener('click', toggleAllFootageSelection);
 el('compileBtn').addEventListener('click', compileAndExecute);
 el('wrapUpBtn').addEventListener('click', wrapUp);
+el('resumeSessionBtn').addEventListener('click', resumeSession);
 el('loadPromptTemplateBtn').addEventListener('click', loadSelectedPromptTemplate);
 el('saveAsPromptTemplateBtn').addEventListener('click', saveAsNewPromptTemplate);
 el('updatePromptTemplateBtn').addEventListener('click', updateSelectedPromptTemplate);
@@ -745,6 +821,8 @@ el('deletePromptTemplateBtn').addEventListener('click', deleteSelectedPromptTemp
 el('settingsBtn').addEventListener('click', openSettings);
 el('closeSettingsBtn').addEventListener('click', closeSettings);
 el('openWorkflowsFolderBtn').addEventListener('click', openWorkflowsFolder);
+el('exportTemplatesBtn').addEventListener('click', exportPromptTemplates);
+el('importTemplatesBtn').addEventListener('click', importPromptTemplates);
 
 // On launch, the recent-projects list was always populated from disk here — but
 // nothing ever auto-selected a project, so every relaunch looked "blank" at a glance

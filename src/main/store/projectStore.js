@@ -139,6 +139,8 @@ function defaultLastSettings() {
     vibe: null,
     pacing: null,
     masterAudioSource: null,
+    syncMethod: null,
+    transcriptionSource: null,
     customProjectName: '',
     dynamicTagValues: {},
     checkedTasks: {},

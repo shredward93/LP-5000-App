@@ -69,6 +69,8 @@ function registerIpcHandlers() {
   handle('settingsStore:listPromptTemplates', () => ({ templates: settingsStore.listPromptTemplates() }));
   handle('settingsStore:savePromptTemplate', (template) => settingsStore.savePromptTemplate(template).then((templates) => ({ templates })));
   handle('settingsStore:deletePromptTemplate', (id) => settingsStore.deletePromptTemplate(id).then((templates) => ({ templates })));
+  handle('settingsStore:exportPromptTemplates', () => settingsStore.exportPromptTemplatesToFile());
+  handle('settingsStore:importPromptTemplates', () => settingsStore.importPromptTemplatesFromFile());
 
   // --- media ---
   handle('media:scan', (projectPath) => ({ files: engine.scanMediaFiles(projectPath) }));
@@ -85,6 +87,8 @@ function registerIpcHandlers() {
   handle('footage:link', (projectPath, assignments) => engine.linkFootageIntoProject(projectPath, assignments));
   handle('footage:list', (projectPath) => ({ items: engine.listLinkedFootage(projectPath) }));
   handle('footage:unlink', (linkPath) => { engine.unlinkFootage(linkPath); return {}; });
+  handle('footage:getFileLabels', (projectPath) => ({ labels: engine.getFileLabels(projectPath) }));
+  handle('footage:setFileLabel', (projectPath, relativePath, label) => ({ labels: engine.setFileLabel(projectPath, relativePath, label) }));
 
   // --- workflows ---
   handle('workflows:listOptions', () => ({ options: engine.getWorkflowOptions(workflowsDirsEnsuredSeeded()) }));
@@ -107,7 +111,8 @@ function registerIpcHandlers() {
   handle('engine:buildAndRun', async (payload) => {
     const {
       projectId, projectPath, templateName, dynamicVars = {}, customProjName = '',
-      vibe, pacing, masterAudio, activeTasks = [], projectPrompt = '', selectedFiles = [],
+      vibe, pacing, masterAudio, syncMethod, transcriptionSource,
+      activeTasks = [], projectPrompt = '', selectedFiles = [],
     } = payload;
 
     const workflowsDirs = workflowsDirsEnsuredSeeded();
@@ -125,9 +130,10 @@ function registerIpcHandlers() {
     const buttercutPath = settingsStore.getResolvedButtercutPath();
     const whisperPath = settingsStore.getResolvedToolPath('whisper');
     const ffmpegPath = settingsStore.getResolvedToolPath('ffmpeg');
+    const fileLabels = engine.getFileLabels(projectPath);
     const md = engine.buildClaudeMd({
       workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
-      projectPrompt, whisperPath, ffmpegPath, selectedFiles, buttercutPath,
+      syncMethod, transcriptionSource, projectPrompt, whisperPath, ffmpegPath, selectedFiles, fileLabels, buttercutPath,
     });
     const claudeMdPath = path.join(projectPath, '.claude', 'CLAUDE.md');
     fs.mkdirSync(path.dirname(claudeMdPath), { recursive: true });
@@ -139,6 +145,7 @@ function registerIpcHandlers() {
     if (projectId) {
       await projectStore.updateProjectLastSettings(projectId, {
         workflowTemplate: templateName, vibe, pacing, masterAudioSource: masterAudio,
+        syncMethod, transcriptionSource,
         customProjectName: customProjName, dynamicTagValues: dynamicVars,
         checkedTasks: Object.fromEntries(activeTasks.map((t) => [t, true])),
         projectPrompt,
@@ -151,6 +158,15 @@ function registerIpcHandlers() {
 
   handle('engine:wrapUp', (projectPath) => {
     launchClaudeInTerminal(projectPath, engine.getWrapUpPrompt(), { claudeBinary: settingsStore.getResolvedToolPath('claude') });
+    return {};
+  });
+
+  // Recovers an interrupted session (e.g. the terminal got closed mid-run) via
+  // Claude Code's own `--continue` — resumes the most recent conversation for this
+  // project directory. No prompt/clipboard involved; Claude picks up where it left off.
+  handle('engine:resumeSession', async (projectPath, projectId) => {
+    launchClaudeInTerminal(projectPath, '', { claudeBinary: settingsStore.getResolvedToolPath('claude'), resume: true });
+    if (projectId) await projectStore.markRun(projectId);
     return {};
   });
 }

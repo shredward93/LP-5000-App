@@ -9,7 +9,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { deepMergeInPlace, requireKnownTool } = require('../src/main/store/settingsStore');
+const { deepMergeInPlace, requireKnownTool, mergeImportedTemplates } = require('../src/main/store/settingsStore');
 
 test('security regression: deepMergeInPlace rejects a __proto__ patch key instead of polluting Object.prototype', () => {
   const target = { a: 1 };
@@ -43,4 +43,36 @@ test('requireKnownTool accepts the three known tool names', () => {
   for (const tool of ['claude', 'ffmpeg', 'whisper']) {
     assert.equal(requireKnownTool(tool), tool);
   }
+});
+
+test('mergeImportedTemplates adds new templates and reports counts', () => {
+  const existing = [{ id: 'a1', name: 'Sermon Recap', text: 'old text' }];
+  const incoming = [{ name: 'B-Roll Montage', text: 'punchy, fast cuts' }];
+  const { templates, addedCount, updatedCount } = mergeImportedTemplates(existing, incoming);
+  assert.equal(addedCount, 1);
+  assert.equal(updatedCount, 0);
+  assert.equal(templates.length, 2);
+  assert.equal(templates[0].id, 'a1', 'existing entries keep their id untouched');
+  const added = templates.find((t) => t.name === 'B-Roll Montage');
+  assert.ok(added, 'new template should be present');
+  assert.notEqual(added.id, 'a1', 'imported template gets its own fresh id');
+  assert.equal(added.text, 'punchy, fast cuts');
+});
+
+test('mergeImportedTemplates matches existing templates by case-insensitive trimmed name and overwrites text', () => {
+  const existing = [{ id: 'a1', name: 'Sermon Recap', text: 'old text' }];
+  const incoming = [{ name: '  sermon recap  ', text: 'new text from friend' }];
+  const { templates, addedCount, updatedCount } = mergeImportedTemplates(existing, incoming);
+  assert.equal(addedCount, 0);
+  assert.equal(updatedCount, 1);
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0].id, 'a1', 'matched-by-name entry keeps its original id');
+  assert.equal(templates[0].text, 'new text from friend');
+});
+
+test('mergeImportedTemplates skips incoming entries with a blank/missing name', () => {
+  const { templates, addedCount, updatedCount } = mergeImportedTemplates([], [{ name: '   ', text: 'no name' }, { text: 'also no name' }]);
+  assert.equal(templates.length, 0);
+  assert.equal(addedCount, 0);
+  assert.equal(updatedCount, 0);
 });

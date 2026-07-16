@@ -105,6 +105,22 @@ test('bug fix 1: selected files are named explicitly in both CLAUDE.md and the r
   assert.ok(prompt.includes('Use exactly these source files: 01_Footage/A-Roll/Cam_A/Smyrna_Live__1030am_2160.mp4'));
 });
 
+test('buildClaudeMd attaches user notes to generic filenames in TARGET SOURCE FILES, and leaves unlabeled files bare', () => {
+  const md = engine.buildClaudeMd({
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: { 'Sermon Title or Date': '7/12', 'Target Number of Clips': '3', 'Overall Tone': 'Uplifting' },
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: ['01_Footage/A-Roll/Cam_A/GH010045.MP4', '01_Footage/A-Roll/Cam_B/C0012.MP4'],
+    fileLabels: { '01_Footage/A-Roll/Cam_A/GH010045.MP4': 'Wide crowd shot, song 1' },
+  });
+  assert.ok(md.includes('- 01_Footage/A-Roll/Cam_A/GH010045.MP4 — "Wide crowd shot, song 1"'), 'labeled file should carry its note');
+  assert.ok(md.includes('- 01_Footage/A-Roll/Cam_B/C0012.MP4') && !md.includes('C0012.MP4 — "'), 'unlabeled file should appear with no note attached');
+});
+
 test('buildClaudeMd explains independent per-file jobs when the master audio sentinel is selected, instead of echoing it as a literal value', () => {
   const md = engine.buildClaudeMd({
     workflowsDirs: realDirs(),
@@ -210,6 +226,65 @@ test('buildClaudeMd includes the Project Prompt as its own durable section when 
 
   const whitespaceOnlyPrompt = engine.buildClaudeMd({ ...base, projectPrompt: '   \n  ' });
   assert.ok(!whitespaceOnlyPrompt.includes('Project Vision & Instructions'));
+});
+
+test('buildClaudeMd defaults to Waveform sync (no jam-synced timecode assumed) and switches to Timecode wording only when explicitly selected', () => {
+  const base = {
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: {},
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: [],
+  };
+  const noMethodSpecified = engine.buildClaudeMd(base);
+  assert.match(noMethodSpecified, /Sync Method \(Waveform — default\)/);
+  assert.match(noMethodSpecified, /does NOT use jam-synced timecode/);
+  assert.ok(!noMethodSpecified.includes('Sync Method (Timecode)'));
+
+  const waveform = engine.buildClaudeMd({ ...base, syncMethod: engine.SYNC_METHOD_WAVEFORM });
+  assert.match(waveform, /WAVEFORM \(audio cross-correlation\)/);
+
+  const timecode = engine.buildClaudeMd({ ...base, syncMethod: engine.SYNC_METHOD_TIMECODE });
+  assert.match(timecode, /Sync Method \(Timecode\)/);
+  assert.match(timecode, /matching embedded SMPTE timecode/);
+  assert.ok(!timecode.includes('Sync Method (Waveform'));
+
+  // Multiple-Ext-Audio guidance always present regardless of method — a shoot with
+  // several mics/recorders must have every one synced, not just the first found.
+  for (const md of [noMethodSpecified, waveform, timecode]) {
+    assert.match(md, /Multiple Ext Audio Files/);
+    assert.match(md, /sync EACH ONE individually/);
+  }
+});
+
+test('buildClaudeMd resolves Transcription Source independently of Master Audio Source', () => {
+  const base = {
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: {},
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: [],
+  };
+  const defaultBehavior = engine.buildClaudeMd(base);
+  assert.match(defaultBehavior, /Transcription Source:\*\* Same as Master Audio Source above/);
+
+  const sameAsMaster = engine.buildClaudeMd({ ...base, transcriptionSource: engine.TRANSCRIPTION_SOURCE_SAME_AS_MASTER });
+  assert.match(sameAsMaster, /Transcription Source:\*\* Same as Master Audio Source above/);
+
+  const merged = engine.buildClaudeMd({ ...base, transcriptionSource: engine.TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO });
+  assert.match(merged, /Merge\/combine every file under `02_Audio\/Ext_Audio\/` into/);
+  assert.match(merged, /Do NOT transcribe just one ext audio file and ignore the others/);
+
+  // A specific source (e.g. one particular camera), independent of Master Audio Source
+  // which is set to a *different* camera above — must not silently fall back to it.
+  const specific = engine.buildClaudeMd({ ...base, masterAudio: 'A-Roll (Cam A)', transcriptionSource: 'A-Roll (Cam B)' });
+  assert.match(specific, /Regardless of Master Audio Source above, transcribe exactly this source: A-Roll \(Cam B\)/);
 });
 
 test('bug fix 1: empty selection omits the target-files section entirely', () => {
@@ -630,6 +705,30 @@ test('unlinkFootage removes the symlink but refuses to touch a real file', () =>
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
     fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+});
+
+test('getFileLabels returns an empty object for a project with no labels yet, and setFileLabel persists/clears notes', () => {
+  const tmp = makeTmpDir();
+  try {
+    assert.deepEqual(engine.getFileLabels(tmp), {});
+
+    engine.setFileLabel(tmp, '01_Footage/A-Roll/Cam_A/GH010045.MP4', 'Wide crowd shot, song 1');
+    engine.setFileLabel(tmp, '01_Footage/A-Roll/Cam_B/C0012.MP4', '  Close-up pastor  '); // untrimmed on purpose
+    assert.deepEqual(engine.getFileLabels(tmp), {
+      '01_Footage/A-Roll/Cam_A/GH010045.MP4': 'Wide crowd shot, song 1',
+      '01_Footage/A-Roll/Cam_B/C0012.MP4': 'Close-up pastor',
+    });
+
+    // Persisted to disk inside the project itself (travels with the folder), not the
+    // app's global registry.
+    assert.ok(fs.existsSync(path.join(tmp, '.claude', 'file_labels.json')));
+
+    // Clearing (empty/whitespace-only) removes the key entirely rather than storing a blank.
+    engine.setFileLabel(tmp, '01_Footage/A-Roll/Cam_A/GH010045.MP4', '   ');
+    assert.deepEqual(engine.getFileLabels(tmp), { '01_Footage/A-Roll/Cam_B/C0012.MP4': 'Close-up pastor' });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 

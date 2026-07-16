@@ -61,6 +61,18 @@
         <label>Master Audio Source
           <select id="masterAudioSelect"></select>
         </label>
+        <div class="row">
+          <label>Sync Method
+            <select id="syncMethodSelect">
+              <option>Waveform</option>
+              <option>Timecode</option>
+            </select>
+          </label>
+          <label>Transcription Source
+            <select id="transcriptionSourceSelect"></select>
+          </label>
+        </div>
+        <p class="hint">Waveform syncs by audio content — the right default when devices aren't jam-synced to matching timecode. If several Ext Audio files are linked (multiple mics/recorders), each gets synced individually. Transcription Source is independent of Master Audio Source above — merge all Ext Audio files together, or pick any specific source, regardless of what ends up as the final program audio.</p>
         <ul id="stage1Tasks" class="task-list"></ul>
       </fieldset>
 
@@ -84,7 +96,7 @@
           <strong>Already Linked</strong>
           <button id="toggleFilesBtn" class="ghost-btn">☑️ Toggle All / None</button>
         </div>
-        <p class="hint">Check which of these Claude should actually use this run — everything is checked by default.</p>
+        <p class="hint">Check which of these Claude should actually use this run — everything is checked by default. Add a note on any clip to tell Claude what it actually is (e.g. "Wide crowd shot, song 1") — handy when the camera gave it a generic filename.</p>
         <ul id="linkedFootageList" class="file-list"></ul>
       </fieldset>
 
@@ -123,6 +135,7 @@
       <div class="workspace-footer">
         <div class="actions">
           <button id="compileBtn" class="compile-btn">🚀 COMPILE &amp; EXECUTE</button>
+          <button id="resumeSessionBtn" class="ghost-btn" title="Continues the most recent Claude session for this project — use this if a session got closed mid-run.">↩️ RESUME LAST SESSION</button>
           <button id="wrapUpBtn" class="wrap-btn">🧹 WRAP-UP &amp; BACKUP PROJECT</button>
         </div>
       </div>
@@ -155,6 +168,12 @@
       <h3>Workflows</h3>
       <div class="row">
         <button id="openWorkflowsFolderBtn" class="ghost-btn">Open Workflows Folder</button>
+      </div>
+      <h3>Prompt Templates</h3>
+      <p class="hint">Share your saved prompts with someone else (or another machine of your own) as a single file.</p>
+      <div class="row">
+        <button id="exportTemplatesBtn" class="ghost-btn">⬇️ Export All to File…</button>
+        <button id="importTemplatesBtn" class="ghost-btn">⬆️ Import from File…</button>
       </div>
     </div>
   </div>

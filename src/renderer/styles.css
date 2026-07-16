@@ -259,6 +259,7 @@ textarea { resize: vertical; min-height: 90px; }
 .file-list input, .task-list input { width: auto; margin: 0; }
 .file-list select { width: auto; display: inline-block; margin: 0; }
 .file-list input[type="text"] { width: 140px; display: inline-block; margin: 0; }
+.file-list input[data-role="fileNote"] { width: auto; flex: 2; min-width: 200px; display: inline-block; margin: 0; font-style: italic; }
 
 .prompt-template-row { margin-top: 10px; }
 .prompt-template-row select { width: auto; flex: 1; margin: 0; }

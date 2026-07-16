@@ -8,6 +8,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { readJsonWithDefaults, writeJsonAtomic } = require('./store/jsonStore');
 
 const BUILD_FROM_SCRATCH = '🛠️ Build from scratch';
 const GENERAL_WORKFLOW = 'General_Workflow.md';
@@ -17,6 +18,19 @@ const MULTICAM_SYNC_TASK = 'Multicam - Sync & stack all A-Roll angles + Master A
 // shared master audio track for a real multicam sync. Selecting it tells Claude each
 // source file is its own independent job using its own on-camera audio.
 const INDEPENDENT_JOBS_MASTER_AUDIO = "Each Camera's Own Audio (independent per-file jobs, not multicam)";
+// Sync Method: how camera angles + external audio get aligned against each other.
+// ButterCut itself has no sync capability (core edition is single-track only) — this
+// is hand-instructed guidance for Claude either way, so the "method" is really just
+// which instruction wording gets used. Waveform is the default since most shoots this
+// app is used for don't have jam-synced timecode across devices.
+const SYNC_METHOD_WAVEFORM = 'Waveform';
+const SYNC_METHOD_TIMECODE = 'Timecode';
+// Transcription Source: independent of Master Audio Source (which governs the FINAL
+// program audio track, A1) — lets a shoot with several external mics/recorders choose
+// to transcribe a merged composite of all of them, or any specific source, regardless
+// of what ends up as the final A1 master audio.
+const TRANSCRIPTION_SOURCE_SAME_AS_MASTER = 'Same as Master Audio Source';
+const TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO = 'Merge All Ext Audio Files';
 const USE_BROLL_TASK = 'Use B-Roll Footage';
 const TRANSCRIBE_TASK = 'Transcribe Master Audio ONLY (Ignore Vision/Other Cams)';
 const AUTO_CUT_TASK = 'Auto-cut to B-Cam for intimate/emotional moments (Transcript-based)';
@@ -614,6 +628,40 @@ function getWorkflowFormState(workflowsDirs, templateName, flags = {}) {
   };
 }
 
+// --- Per-file labels (short user notes on individual clips, e.g. "Wide crowd shot") -
+// Stored inside the project itself (not the app's global registry) so labels travel
+// with the project folder wherever it's opened from — same reasoning as library.yaml
+// living in libraries/. Keyed by the file's path relative to the project root, the
+// same format already used for selectedFiles/TARGET SOURCE FILES.
+
+/** @param {string} projectPath @returns {string} */
+function fileLabelsPath(projectPath) {
+  return path.join(projectPath, '.claude', 'file_labels.json');
+}
+
+/** @param {string} projectPath @returns {Record<string,string>} */
+function getFileLabels(projectPath) {
+  return readJsonWithDefaults(fileLabelsPath(projectPath), {});
+}
+
+/**
+ * Sets the note for one file; an empty/whitespace-only label clears it instead of
+ * storing a blank entry, keeping the file from accumulating dead keys as clips get
+ * relabeled or unlinked.
+ * @param {string} projectPath
+ * @param {string} relativePath
+ * @param {string} label
+ * @returns {Record<string,string>} the full updated label map
+ */
+function setFileLabel(projectPath, relativePath, label) {
+  const labels = getFileLabels(projectPath);
+  const trimmed = String(label || '').trim();
+  if (trimmed) labels[relativePath] = trimmed;
+  else delete labels[relativePath];
+  writeJsonAtomic(fileLabelsPath(projectPath), labels);
+  return labels;
+}
+
 // --- CLAUDE.md / prompt building --------------------------------------------
 
 /**
@@ -625,15 +673,20 @@ function getWorkflowFormState(workflowsDirs, templateName, flags = {}) {
  * @param {string} opts.vibe
  * @param {string} opts.pacing
  * @param {string} opts.masterAudio
+ * @param {string} [opts.syncMethod]
+ * @param {string} [opts.transcriptionSource]
  * @param {string} [opts.projectPrompt]
  * @param {string | null} [opts.whisperPath]
  * @param {string | null} [opts.ffmpegPath]
  * @param {string[]} [opts.selectedFiles]
+ * @param {Record<string,string>} [opts.fileLabels] User notes per file (relative
+ *   path -> label), e.g. so a generic camera filename can be named "Wide crowd shot"
+ *   for Claude — see getFileLabels/setFileLabel.
  * @returns {string}
  */
 function buildClaudeMd({
   workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
-  projectPrompt, whisperPath, ffmpegPath, selectedFiles, buttercutPath,
+  syncMethod, transcriptionSource, projectPrompt, whisperPath, ffmpegPath, selectedFiles, fileLabels, buttercutPath,
 }) {
   let md;
   if (templateName === BUILD_FROM_SCRATCH) {
@@ -654,7 +707,34 @@ function buildClaudeMd({
       + 'between them. Treat every selected file as its own separate job and produce a separate output '
       + 'for each one, all within this session.'
     : `- Master Audio Source: ${masterAudio}`;
-  md += `\n\n## 🌍 PROJECT CONFIG\n- Vibe: ${vibe}\n- Pacing: ${pacing}\n${masterAudioLine}`;
+  // ButterCut itself has no sync capability at all (core edition is single-track only)
+  // — alignment is always hand-instructed guidance for Claude, timecode or waveform.
+  // Waveform is the default: most shoots this app is used for have no jam-synced
+  // timecode across devices, so trusting embedded timecode would misalign everything.
+  const syncMethodLine = syncMethod === SYNC_METHOD_TIMECODE
+    ? '- **Sync Method (Timecode):** Align every camera angle and external audio file/recorder against the picture '
+      + 'by matching embedded SMPTE timecode across sources (jam-synced). No 0-base anchoring.'
+    : '- **Sync Method (Waveform — default):** This shoot does NOT use jam-synced timecode across devices — '
+      + 'do NOT rely on embedded timecode matching between cameras/recorders. Align every camera angle and every '
+      + 'external audio file/recorder against the picture via WAVEFORM (audio cross-correlation) instead.';
+  const multiExtAudioLine = '- **Multiple Ext Audio Files:** If more than one file exists under `02_Audio/Ext_Audio/` '
+    + '(e.g. several lav mics, or a boom + a wireless pack), sync EACH ONE individually against the picture — '
+    + 'never sync only the first file found and silently ignore the rest.';
+  // Independent of Master Audio Source (which governs the FINAL program audio track,
+  // A1) — a shoot with several external mics/recorders can still choose to transcribe
+  // a merged composite of all of them, or any specific source, regardless of what
+  // ends up as the final A1 master audio.
+  let transcriptionSourceLine;
+  if (transcriptionSource === TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO) {
+    transcriptionSourceLine = '- **Transcription Source:** Merge/combine every file under `02_Audio/Ext_Audio/` into '
+      + 'one composite audio source (multiple mics/recorders — e.g. several lav mics or a boom + wireless pack) and '
+      + 'transcribe that composite. Do NOT transcribe just one ext audio file and ignore the others.';
+  } else if (transcriptionSource && transcriptionSource !== TRANSCRIPTION_SOURCE_SAME_AS_MASTER) {
+    transcriptionSourceLine = `- **Transcription Source:** Regardless of Master Audio Source above, transcribe exactly this source: ${transcriptionSource}.`;
+  } else {
+    transcriptionSourceLine = '- **Transcription Source:** Same as Master Audio Source above — transcribe that.';
+  }
+  md += `\n\n## 🌍 PROJECT CONFIG\n- Vibe: ${vibe}\n- Pacing: ${pacing}\n${masterAudioLine}\n${syncMethodLine}\n${multiExtAudioLine}\n${transcriptionSourceLine}`;
   if (projectPrompt && projectPrompt.trim()) {
     md += `\n\n## 🧭 Project Vision & Instructions\n${projectPrompt.trim()}`;
   }
@@ -668,12 +748,17 @@ function buildClaudeMd({
   // invoked during a session, since Claude just falls back to whatever it finds itself.
   md += `\n- **Transcription (Whisper):** Use exactly this binary — do NOT substitute a different whisper install even if another is also on PATH: \`${whisperPath || 'whisper (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
   md += `\n- **ffmpeg:** Use exactly this binary: \`${ffmpegPath || 'ffmpeg (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
-  md += '\n- **Global Rules:** Extract true SMPTE timecode. No 0-base anchoring. Use Telegraphic visual transcripts. Pause for Sync Map review and take note of remaining tasks. ALWAYS export timelines using the FCP7 XML standard (.xml / <xmeml> format) for DaVinci Resolve compatibility. NEVER export as FCPXML (.fcpxml).';
+  md += '\n- **Global Rules:** Use Telegraphic visual transcripts. Pause for Sync Map review and take note of remaining tasks. ALWAYS export timelines using the FCP7 XML standard (.xml / <xmeml> format) for DaVinci Resolve compatibility. NEVER export as FCPXML (.fcpxml).';
   if (selectedFiles && selectedFiles.length > 0) {
     md += '\n\n## 📼 TARGET SOURCE FILES (this run)\n'
         + 'Use EXACTLY these source file(s). Do NOT use or search for any other files under '
-        + '01_Footage/02_Audio even if present:\n'
-        + selectedFiles.map((f) => `- ${f}`).join('\n');
+        + '01_Footage/02_Audio even if present. Where a file has a note in quotes, that\'s a '
+        + 'user-provided description of what the clip actually is — generic camera filenames '
+        + '(e.g. GH010045.MP4) tell you nothing on their own, trust the note:\n'
+        + selectedFiles.map((f) => {
+          const label = fileLabels && fileLabels[f];
+          return label ? `- ${f} — "${label}"` : `- ${f}`;
+        }).join('\n');
   }
   return md;
 }
@@ -764,6 +849,10 @@ module.exports = {
   USE_BROLL_TASK,
   TRANSCRIBE_TASK,
   INDEPENDENT_JOBS_MASTER_AUDIO,
+  SYNC_METHOD_WAVEFORM,
+  SYNC_METHOD_TIMECODE,
+  TRANSCRIPTION_SOURCE_SAME_AS_MASTER,
+  TRANSCRIPTION_SOURCE_MERGE_EXT_AUDIO,
   parseFrontmatter,
   readFrontmatterBlock,
   stripFrontmatterFromContent,
@@ -777,6 +866,8 @@ module.exports = {
   listLinkedFootage,
   listCameraLabels,
   unlinkFootage,
+  getFileLabels,
+  setFileLabel,
   seedUserWorkflowsDir,
   resolveWorkflowFile,
   listWorkflowFilenames,
