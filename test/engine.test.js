@@ -194,6 +194,7 @@ test('buildClaudeMd points Claude at the bundled xml-export tooling as the singl
   assert.match(withDir, /franken_bit_export\.rb/);
   assert.match(withDir, /EXPORT_NOTES\.md/);
   assert.ok(withDir.includes('/Applications/LP5000.app/Contents/Resources/assets/xml-export'));
+  assert.match(withDir, /troubleshoot and fix an XML export\/import problem/i, 'Claude must be told to write fixes back into EXPORT_NOTES.md, not just remember them');
 
   const withoutDir = engine.buildClaudeMd({ ...base, xmlExportDir: null });
   assert.ok(!withoutDir.includes('franken_bit_export.rb'));
