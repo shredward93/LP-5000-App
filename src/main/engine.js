@@ -743,20 +743,28 @@ function buildClaudeMd({
   if (projectPrompt && projectPrompt.trim()) {
     md += `\n\n## 🧭 Project Vision & Instructions\n${projectPrompt.trim()}`;
   }
+  // Everything below is engine-generated, not the user's own words — its own heading
+  // keeps it from reading as part of Project Vision & Instructions above.
+  md += '\n\n## ⚙️ ENGINE RULES (regenerated every run — do not hand-edit)';
   md += MULTI_ANGLE_BROLL_PROTOCOL;
   md += '\n- **Library Landmark:** Your source of truth is `library.yaml`. Because the BUTTERCUT_PROJECT_DIR environment variable is enforced, this file will ALWAYS be generated and located strictly inside the `libraries/` directory within the current project root.';
-  md += buttercutPath
-    ? `\n- **ButterCut Reference:** ButterCut (source clone) lives at \`${buttercutPath}\` — its \`lib/buttercut/\` Ruby helpers (contact sheets, script_extractor, library.yaml migrations, backup_libraries.rb) and \`skills/\` are available there for reference. Not required for every task: hand-authoring FCP7 XML directly (see Track Protocol above) has worked reliably for multi-angle/B-Roll cuts without going through ButterCut's own exporter.`
-    : '\n- **ButterCut Reference:** ButterCut location is not configured in Settings — its Ruby helpers/skills are unavailable this run; hand-author FCP7 XML directly per the Track Protocol above.';
-  md += xmlExportDir
-    ? `\n- **Single-Camera Franken-Bite XML Export:** For a single-camera social clip made of several trimmed ranges from one source, use \`${xmlExportDir}/franken_bit_export.rb\` — see \`${xmlExportDir}/EXPORT_NOTES.md\` for current per-editor status and the confirmed-correct structure. This file is the single up-to-date source of truth for this — do NOT trust a memory note about XML structure without checking it against this file first. **If you troubleshoot and fix an XML export/import problem this session** — a new editor confirmed working, a structural fix, anything that changes what "confirmed" means — edit \`${xmlExportDir}/EXPORT_NOTES.md\` directly with the finding before finishing. Don't leave it only in conversation or memory: if it's not written into that file, the next run (and anyone else using this app) won't see it.`
+  // One consolidated XML Export bullet instead of three separate ones (ButterCut
+  // Reference / franken-bite export / Global Rules used to each mention FCP7-XML or
+  // Resolve on their own, overlapping and, for the old blanket "NEVER export as
+  // FCPXML" line, actively contradicting the multi-editor franken-bite tooling below).
+  const buttercutRefText = buttercutPath
+    ? `ButterCut (source clone) lives at \`${buttercutPath}\` — its \`lib/buttercut/\` Ruby helpers (contact sheets, script_extractor, library.yaml migrations, backup_libraries.rb) are available there for reference.`
+    : 'ButterCut location is not configured in Settings — its Ruby helpers are unavailable this run.';
+  const frankenBiteExportText = xmlExportDir
+    ? ` **Single-camera franken-bite clips:** use \`${xmlExportDir}/franken_bit_export.rb\` instead — it supports Resolve/Premiere/FCPX. \`${xmlExportDir}/EXPORT_NOTES.md\` is the single up-to-date source of truth for current per-editor status and the confirmed-correct structure — do NOT trust a memory note about XML structure without checking it first. If you troubleshoot and fix an XML export/import problem this session, edit that file with the finding before finishing; don't leave it only in conversation or memory.`
     : '';
+  md += `\n- **XML Export:** **Multi-angle/B-Roll cuts** are hand-authored FCP7 XML (\`.xml\` / \`<xmeml>\` format) per the Track Protocol above, targeting DaVinci Resolve — never FCPXML (\`.fcpxml\`) for these.${frankenBiteExportText} ${buttercutRefText}`;
   // Settings' resolved tool paths otherwise never reach Claude at all — without this,
   // picking a whisper variant in Settings has no effect on which binary actually gets
   // invoked during a session, since Claude just falls back to whatever it finds itself.
   md += `\n- **Transcription (Whisper):** Use exactly this binary — do NOT substitute a different whisper install even if another is also on PATH: \`${whisperPath || 'whisper (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
   md += `\n- **ffmpeg:** Use exactly this binary: \`${ffmpegPath || 'ffmpeg (not resolved by LP5000 — falls back to a bare PATH lookup)'}\``;
-  md += '\n- **Global Rules:** Use Telegraphic visual transcripts. Pause for Sync Map review and take note of remaining tasks. ALWAYS export timelines using the FCP7 XML standard (.xml / <xmeml> format) for DaVinci Resolve compatibility. NEVER export as FCPXML (.fcpxml).';
+  md += '\n- **Other Global Rules:** Use Telegraphic visual transcripts. Pause for Sync Map review and take note of remaining tasks.';
   if (selectedFiles && selectedFiles.length > 0) {
     md += '\n\n## 📼 TARGET SOURCE FILES (this run)\n'
         + 'Use EXACTLY these source file(s). Do NOT use or search for any other files under '
