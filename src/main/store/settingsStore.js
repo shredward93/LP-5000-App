@@ -357,6 +357,13 @@ function getWorkflowsDirs() {
   return { bundledDir, userDir, overrideDir, effectiveDirs };
 }
 
+// Bundled with this app (not seeded per-user like Workflows) — this is the single
+// source of truth for XML export tooling/notes, meant to be edited directly in this
+// repo and shipped via git, not customized per machine.
+function getXmlExportDir() {
+  return path.join(app.getAppPath(), 'assets', 'xml-export');
+}
+
 async function setWorkflowsOverrideDir(dirPath) {
   return updateSettings({ workflows: { overrideDir: dirPath || null } });
 }
@@ -472,6 +479,7 @@ module.exports = {
   getResolvedToolPath,
   getWorkflowsDirs,
   setWorkflowsOverrideDir,
+  getXmlExportDir,
   detectButtercut,
   setButtercutOverride,
   browseForButtercutDir,

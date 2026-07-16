@@ -682,11 +682,16 @@ function setFileLabel(projectPath, relativePath, label) {
  * @param {Record<string,string>} [opts.fileLabels] User notes per file (relative
  *   path -> label), e.g. so a generic camera filename can be named "Wide crowd shot"
  *   for Claude — see getFileLabels/setFileLabel.
+ * @param {string | null} [opts.xmlExportDir] Absolute path to this app's bundled
+ *   assets/xml-export/ — the single source of truth for single-camera franken-bite
+ *   XML export (script + per-editor status notes), kept up to date in this repo
+ *   rather than duplicated into the ButterCut clone or left to a memory note.
  * @returns {string}
  */
 function buildClaudeMd({
   workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
   syncMethod, transcriptionSource, projectPrompt, whisperPath, ffmpegPath, selectedFiles, fileLabels, buttercutPath,
+  xmlExportDir,
 }) {
   let md;
   if (templateName === BUILD_FROM_SCRATCH) {
@@ -743,6 +748,9 @@ function buildClaudeMd({
   md += buttercutPath
     ? `\n- **ButterCut Reference:** ButterCut (source clone) lives at \`${buttercutPath}\` — its \`lib/buttercut/\` Ruby helpers (contact sheets, script_extractor, library.yaml migrations, backup_libraries.rb) and \`skills/\` are available there for reference. Not required for every task: hand-authoring FCP7 XML directly (see Track Protocol above) has worked reliably for multi-angle/B-Roll cuts without going through ButterCut's own exporter.`
     : '\n- **ButterCut Reference:** ButterCut location is not configured in Settings — its Ruby helpers/skills are unavailable this run; hand-author FCP7 XML directly per the Track Protocol above.';
+  md += xmlExportDir
+    ? `\n- **Single-Camera Franken-Bite XML Export:** For a single-camera social clip made of several trimmed ranges from one source, use \`${xmlExportDir}/franken_bit_export.rb\` — see \`${xmlExportDir}/EXPORT_NOTES.md\` for current per-editor status and the confirmed-correct structure. This file is the single up-to-date source of truth for this — do NOT trust a memory note about XML structure without checking it against this file first.`
+    : '';
   // Settings' resolved tool paths otherwise never reach Claude at all — without this,
   // picking a whisper variant in Settings has no effect on which binary actually gets
   // invoked during a session, since Claude just falls back to whatever it finds itself.

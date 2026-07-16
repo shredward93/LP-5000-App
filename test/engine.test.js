@@ -179,6 +179,26 @@ test('buildClaudeMd references the resolved ButterCut path when configured, or s
   assert.ok(withoutPath.includes('not configured in Settings'));
 });
 
+test('buildClaudeMd points Claude at the bundled xml-export tooling as the single source of truth for franken-bite exports', () => {
+  const base = {
+    workflowsDirs: realDirs(),
+    templateName: 'Sermon_Workflow.md',
+    dynamicVars: {},
+    customProjName: '',
+    vibe: 'Cinematic & Emotional',
+    pacing: 'Moderate',
+    masterAudio: 'A-Roll (Cam A)',
+    selectedFiles: [],
+  };
+  const withDir = engine.buildClaudeMd({ ...base, xmlExportDir: '/Applications/LP5000.app/Contents/Resources/assets/xml-export' });
+  assert.match(withDir, /franken_bit_export\.rb/);
+  assert.match(withDir, /EXPORT_NOTES\.md/);
+  assert.ok(withDir.includes('/Applications/LP5000.app/Contents/Resources/assets/xml-export'));
+
+  const withoutDir = engine.buildClaudeMd({ ...base, xmlExportDir: null });
+  assert.ok(!withoutDir.includes('franken_bit_export.rb'));
+});
+
 test('buildClaudeMd tells Claude the exact resolved whisper/ffmpeg binaries to use, not just the app Settings panel', () => {
   const base = {
     workflowsDirs: realDirs(),

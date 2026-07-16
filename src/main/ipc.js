@@ -131,9 +131,11 @@ function registerIpcHandlers() {
     const whisperPath = settingsStore.getResolvedToolPath('whisper');
     const ffmpegPath = settingsStore.getResolvedToolPath('ffmpeg');
     const fileLabels = engine.getFileLabels(projectPath);
+    const xmlExportDir = settingsStore.getXmlExportDir();
     const md = engine.buildClaudeMd({
       workflowsDirs, templateName, dynamicVars, customProjName, vibe, pacing, masterAudio,
       syncMethod, transcriptionSource, projectPrompt, whisperPath, ffmpegPath, selectedFiles, fileLabels, buttercutPath,
+      xmlExportDir,
     });
     const claudeMdPath = path.join(projectPath, '.claude', 'CLAUDE.md');
     fs.mkdirSync(path.dirname(claudeMdPath), { recursive: true });
